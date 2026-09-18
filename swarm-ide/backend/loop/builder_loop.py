@@ -513,6 +513,56 @@ def run_builder_loop(
 
 
             # 10. FINISH
+
+            elif action_type == "render_hyperframes_video":
+                import os, subprocess, tempfile, shutil
+                composition_html = args.get("composition_html", "")
+                output_filename = args.get("output_filename", "video.mp4")
+                output_path = os.path.abspath(os.path.join(os.getcwd(), 'workspace', output_filename))
+                
+                try:
+                    with tempfile.TemporaryDirectory() as temp_dir:
+                        comp_dir = os.path.join(temp_dir, "composition")
+                        os.makedirs(comp_dir)
+                        
+                        index_path = os.path.join(comp_dir, "index.html")
+                        with open(index_path, "w", encoding="utf-8") as f:
+                            f.write(composition_html)
+                            
+                        check_process = subprocess.run(
+                            ["npx", "hyperframes", "check"],
+                            cwd=comp_dir,
+                            capture_output=True,
+                            text=True,
+                            shell=True
+                        )
+                        
+                        if check_process.returncode != 0:
+                            observation = f"Validation Error. Please fix your HTML and try again:\n{check_process.stdout}\n{check_process.stderr}"
+                        else:
+                            render_process = subprocess.run(
+                                ["npx", "hyperframes", "render"],
+                                cwd=comp_dir,
+                                capture_output=True,
+                                text=True,
+                                shell=True
+                            )
+                            
+                            if render_process.returncode != 0:
+                                observation = f"Render Failed:\n{render_process.stderr}"
+                            else:
+                                renders_dir = os.path.join(comp_dir, "renders")
+                                rendered_files = [f for f in os.listdir(renders_dir) if f.endswith(".mp4")] if os.path.exists(renders_dir) else []
+                                
+                                if not rendered_files:
+                                    observation = "Error: Render completed but no .mp4 file was found."
+                                else:
+                                    source_mp4 = os.path.join(renders_dir, rendered_files[0])
+                                    shutil.move(source_mp4, output_path)
+                                    observation = f"SUCCESS! Video rendered successfully and saved to: {output_path}"
+                except Exception as e:
+                    observation = f"Tool Execution Exception: {str(e)}"
+
             elif action_type == "ask_user":
                 question = args.get("question", "")
                 final_summary = question

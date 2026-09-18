@@ -149,6 +149,19 @@ def parse_action(xml_text):
             "query": _extract(xml_text, "query") or ""
         }}
 
+
+    if "<render_hyperframes_video" in xml_text:
+        composition_html = _extract(xml_text, "composition_html") or _extract_attr(xml_text, "render_hyperframes_video", "composition_html") or ""
+        output_filename = _extract(xml_text, "output_filename") or _extract_attr(xml_text, "render_hyperframes_video", "output_filename") or ""
+        if not composition_html:
+            import re
+            m = re.search(r'<composition_html[^>]*>(.*?)</composition_html>', xml_text, re.DOTALL)
+            if m: composition_html = m.group(1).strip()
+        return {"type": "render_hyperframes_video", "args": {
+            "composition_html": composition_html,
+            "output_filename": output_filename,
+        }}
+
     if "<ask_user>" in xml_text:
         return {"type": "ask_user", "args": {
             "question": _extract(xml_text, "question") or ""

@@ -53,6 +53,11 @@ Your internal reasoning about the current state of the swarm, the active tasks, 
   <command>shell command</command>
 </execute_bash>
 
+<render_hyperframes_video>
+  <composition_html>The complete, valid HTML string containing the GSAP timeline, .clip sections, and data-composition-id. MUST adhere to Hyperframes deterministic rules.</composition_html>
+  <output_filename>The desired name of the output video file, e.g., 'launch_trailer.mp4'</output_filename>
+</render_hyperframes_video>
+
 <run_test>
   <command>test command</command>
   <expect>expected output</expect>
