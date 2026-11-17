@@ -181,7 +181,15 @@ def execute_builder_loop(prompt, uncensored=False, history=None):
     workspace_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'workspace'))
     skills_dir = os.path.join(workspace_dir, "skills")
     os.makedirs(skills_dir, exist_ok=True)
-    available_skills = [f for f in os.listdir(skills_dir) if f.endswith(".py")]
+
+    # Seed built-in python skills from backend/skills/*/scripts/*.py if missing in workspace
+    backend_skills_dir = os.path.join(os.path.dirname(__file__), 'swarm-ide', 'backend', 'skills')
+    if os.path.exists(backend_skills_dir):
+        for root, _, files in os.walk(backend_skills_dir):
+            for file in files:
+                if file.endswith('.py') and not os.path.exists(os.path.join(skills_dir, file)):
+                    import shutil
+                    shutil.copy2(os.path.join(root, file), os.path.join(skills_dir, file))
 
     from backend.agents.orchestrator import load_system_prompt
     base_prompt = load_system_prompt()
@@ -794,6 +802,94 @@ def install_skill_route():
         return jsonify({'status': 'installed', 'path': path})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/skills', methods=['GET'])
+def list_all_skills():
+    """Returns all installed skills with rich categorization and frontmatter descriptions."""
+    skills_dir = os.path.join(os.path.dirname(__file__), 'swarm-ide', 'backend', 'skills')
+    registry_path = os.path.join(skills_dir, 'registry.json')
+    skills = []
+    
+    if os.path.exists(registry_path):
+        try:
+            with open(registry_path, 'r', encoding='utf-8') as f:
+                reg = json.load(f)
+                
+            for slug, meta in reg.items():
+                cat = meta.get('category', '')
+                if not cat:
+                    if slug in ['last30days']:
+                        cat = 'research'
+                    elif any(s in slug for s in ['better-', 'baseline', 'make-interfaces', 'design-md']):
+                        cat = 'interface'
+                    elif any(s in slug for s in ['code-review', 'debugging', 'development', 'threat-model']):
+                        cat = 'swarm-coordination'
+                    elif 'webhook' in slug or 'hyperframes' in slug or 'img2threejs' in slug:
+                        cat = 'tool'
+                    else:
+                        cat = 'design-theme'
+                        
+                desc = meta.get('description', '')
+                if not desc:
+                    skill_md = os.path.join(skills_dir, slug, 'SKILL.md')
+                    if os.path.exists(skill_md):
+                        try:
+                            with open(skill_md, 'r', encoding='utf-8', errors='ignore') as mf:
+                                content = mf.read(600)
+                                m = re.search(r'description:\s*(.*?)(?:\n---|\n[a-z_]+:)', content, re.DOTALL)
+                                if m:
+                                    desc = m.group(1).strip()
+                        except:
+                            pass
+                            
+                skills.append({
+                    'slug': slug,
+                    'name': meta.get('name', slug),
+                    'category': cat,
+                    'description': desc or 'Standardized agent framework.',
+                    'url': meta.get('url', ''),
+                    'stars': meta.get('stars', 0),
+                    'type': 'markdown_framework'
+                })
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    workspace_skills = os.path.join(os.path.dirname(__file__), 'workspace', 'skills')
+    if os.path.exists(workspace_skills):
+        for f in os.listdir(workspace_skills):
+            if f.endswith('.py'):
+                skills.append({
+                    'slug': f,
+                    'name': f,
+                    'category': 'python_tool',
+                    'description': f'Executable Python tool in workspace/skills/{f}. Run via <use_skill>.',
+                    'url': 'local',
+                    'stars': 0,
+                    'type': 'python_tool'
+                })
+
+    return jsonify({'total': len(skills), 'skills': skills})
+
+
+@app.route('/api/skills/<slug>', methods=['GET'])
+def get_skill_detail(slug):
+    """Returns the full SKILL.md or script content for a given skill slug."""
+    import werkzeug.utils
+    safe_slug = werkzeug.utils.secure_filename(slug)
+    skills_dir = os.path.join(os.path.dirname(__file__), 'swarm-ide', 'backend', 'skills')
+    skill_path = os.path.join(skills_dir, safe_slug, 'SKILL.md')
+    
+    if os.path.exists(skill_path):
+        with open(skill_path, 'r', encoding='utf-8', errors='ignore') as f:
+            return jsonify({'slug': safe_slug, 'type': 'markdown_framework', 'content': f.read()})
+            
+    workspace_tool = os.path.join(os.path.dirname(__file__), 'workspace', 'skills', safe_slug)
+    if os.path.exists(workspace_tool):
+        with open(workspace_tool, 'r', encoding='utf-8', errors='ignore') as f:
+            return jsonify({'slug': safe_slug, 'type': 'python_tool', 'content': f.read()})
+            
+    return jsonify({'error': f'Skill {slug} not found'}), 404
 
 
 if __name__ == '__main__':

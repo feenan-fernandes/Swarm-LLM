@@ -154,7 +154,6 @@ def parse_action(xml_text):
         composition_html = _extract(xml_text, "composition_html") or _extract_attr(xml_text, "render_hyperframes_video", "composition_html") or ""
         output_filename = _extract(xml_text, "output_filename") or _extract_attr(xml_text, "render_hyperframes_video", "output_filename") or ""
         if not composition_html:
-            import re
             m = re.search(r'<composition_html[^>]*>(.*?)</composition_html>', xml_text, re.DOTALL)
             if m: composition_html = m.group(1).strip()
         return {"type": "render_hyperframes_video", "args": {
@@ -190,13 +189,20 @@ def parse_action(xml_text):
     if m_html:
         return {'type': 'write_file', 'args': {'path': 'index.html', 'content': m_html.group(1).strip()}}
 
-    m_worker = re.findall(r'<spawn_worker>\s*<task>(.*?)</task>\s*</spawn_worker>', xml_text, re.DOTALL | re.IGNORECASE)
-    if not m_worker:
-        m_worker = re.findall(r'<spawn_worker>\s*(.*?)\s*</spawn_worker>', xml_text, re.DOTALL | re.IGNORECASE)
-    if m_worker:
-        tasks = [t.strip() for t in m_worker if t.strip()]
-        if tasks:
-            return {"type": "spawn_worker", "args": {"tasks": tasks}}
+    worker_blocks = re.findall(r'<spawn_worker>(.*?)</spawn_worker>', xml_text, re.DOTALL | re.IGNORECASE)
+    if worker_blocks:
+        workers = []
+        for block in worker_blocks:
+            task = _extract(block, "task")
+            if not task:
+                inner = re.sub(r'<[^>]+>.*?</[^>]+>', '', block).strip()
+                task = inner if inner else block.strip()
+            skill = _extract(block, "skill") or ""
+            role = _extract(block, "role") or "Specialized Worker"
+            if task:
+                workers.append({"task": task, "skill": skill, "role": role})
+        if workers:
+            return {"type": "spawn_worker", "args": {"workers": workers, "tasks": workers}}
 
     stripped_text = xml_text.strip()
     if len(stripped_text) > 20:

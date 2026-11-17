@@ -13,7 +13,8 @@
                 extend: {
                     colors: {
                         gray: { 900: '#0d1117', 800: '#161b22', 700: '#21262d', 600: '#30363d', 400: '#8b949e', 300: '#c9d1d9' },
-                        blue: { 500: '#58a6ff' }
+                        blue: { 500: '#58a6ff' },
+                        purple: { 500: '#bc8cff' }
                     }
                 }
             }
@@ -29,7 +30,7 @@
     <style>
         body { background-color: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; overflow: hidden; }
         .markdown p { margin-bottom: 0.75rem; }
-        .markdown pre { background: #161b22; padding: 1rem; border-radius: 0.375rem; border: 1px solid #30363d; margin: 0.75rem 0; overflow-x: auto; }
+        .markdown pre { background: #161b22; padding: 1rem; border-radius: 0.5rem; border: 1px solid #30363d; margin: 0.75rem 0; overflow-x: auto; }
         .markdown code { font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.85em; }
         .markdown pre code { font-size: 0.85rem; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -38,6 +39,7 @@
         ::-webkit-scrollbar-thumb:hover { background: #8b949e; }
         .loader { border: 2px solid #30363d; border-top: 2px solid #58a6ff; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .tabular-nums { font-variant-numeric: tabular-nums; }
     </style>
 </head>
 <body>
@@ -48,45 +50,190 @@
         const { useState, useEffect, useRef } = React;
 
         const RichMessage = ({ content }) => {
+            let working = content;
+
+            // 1. Extract Thoughts
             const thinkRegex = /<think>([\s\S]*?)<\/think>/g;
             let thoughts = [];
             let match;
-            while ((match = thinkRegex.exec(content)) !== null) {
+            while ((match = thinkRegex.exec(working)) !== null) {
                 thoughts.push(match[1].trim());
             }
-            
-            let cleanContent = content.replace(thinkRegex, '');
-            
-            const toolRegex = /<(execute_bash|write_file|patch_file|replace_block)[\s\S]*?>([\s\S]*?)<\/\1>/g;
+            working = working.replace(thinkRegex, '');
+
+            // 2. Extract Spawned Workers
+            const workerRegex = /<spawn_worker>([\s\S]*?)<\/spawn_worker>/g;
+            let workers = [];
+            while ((match = workerRegex.exec(working)) !== null) {
+                const block = match[1];
+                const taskMatch = /<task>([\s\S]*?)<\/task>/i.exec(block);
+                const skillMatch = /<skill>([\s\S]*?)<\/skill>/i.exec(block);
+                const roleMatch = /<role>([\s\S]*?)<\/role>/i.exec(block);
+                
+                workers.push({
+                    task: taskMatch ? taskMatch[1].trim() : block.replace(/<[^>]+>/g, '').trim(),
+                    skill: skillMatch ? skillMatch[1].trim() : '',
+                    role: roleMatch ? roleMatch[1].trim() : 'Specialized Sub-Agent'
+                });
+            }
+            working = working.replace(workerRegex, '');
+
+            // 3. Extract Selected Skills
+            const selectSkillRegex = /<select_skill>([\s\S]*?)<\/select_skill>/g;
+            let selectedSkills = [];
+            while ((match = selectSkillRegex.exec(working)) !== null) {
+                const block = match[1];
+                const nameM = /<skill_name>([\s\S]*?)<\/skill_name>/i.exec(block);
+                const reasonM = /<reason>([\s\S]*?)<\/reason>/i.exec(block);
+                selectedSkills.push({
+                    name: nameM ? nameM[1].trim() : block.trim(),
+                    reason: reasonM ? reasonM[1].trim() : ''
+                });
+            }
+            working = working.replace(selectSkillRegex, '');
+
+            // 4. Extract Python Tool Use
+            const useSkillRegex = /<use_skill>([\s\S]*?)<\/use_skill>/g;
+            let usedSkills = [];
+            while ((match = useSkillRegex.exec(working)) !== null) {
+                const block = match[1];
+                const nameM = /<name>([\s\S]*?)<\/name>/i.exec(block);
+                const argsM = /<args>([\s\S]*?)<\/args>/i.exec(block);
+                usedSkills.push({
+                    name: nameM ? nameM[1].trim() : 'tool',
+                    args: argsM ? argsM[1].trim() : ''
+                });
+            }
+            working = working.replace(useSkillRegex, '');
+
+            // 5. Extract Hyperframes Video
+            const hyperRegex = /<render_hyperframes_video>([\s\S]*?)<\/render_hyperframes_video>/g;
+            let hyperframes = [];
+            while ((match = hyperRegex.exec(working)) !== null) {
+                const block = match[1];
+                const outM = /<output_filename>([\s\S]*?)<\/output_filename>/i.exec(block);
+                hyperframes.push({
+                    filename: outM ? outM[1].trim() : 'launch_trailer.mp4'
+                });
+            }
+            working = working.replace(hyperRegex, '');
+
+            // 6. Extract Standard Tools
+            const toolRegex = /<(execute_bash|write_file|patch_file|replace_block|search_rag|run_test)[\s\S]*?>([\s\S]*?)<\/\1>/g;
             let tools = [];
-            while ((match = toolRegex.exec(cleanContent)) !== null) {
+            while ((match = toolRegex.exec(working)) !== null) {
                 tools.push({ type: match[1], body: match[2].trim() });
             }
-            cleanContent = cleanContent.replace(toolRegex, '');
+            working = working.replace(toolRegex, '');
 
             return (
                 <div className="flex flex-col gap-3">
+                    {/* Chain of Thought */}
                     {thoughts.map((t, idx) => (
-                        <details key={idx} className="group border border-gray-600 rounded-md bg-gray-800 overflow-hidden cursor-pointer">
-                            <summary className="px-3 py-2 text-xs font-semibold text-gray-400 select-none hover:text-gray-300">
-                                [+] Agent Reasoning (Chain of Thought)
+                        <details key={idx} className="group border border-gray-700/80 rounded-lg bg-gray-800/80 overflow-hidden cursor-pointer shadow-sm">
+                            <summary className="px-3 py-2 text-xs font-semibold text-gray-400 select-none hover:text-gray-300 flex items-center justify-between">
+                                <span className="flex items-center gap-1.5">
+                                    <span className="text-blue-400">💭</span> Agent Reasoning (Chain of Thought)
+                                </span>
+                                <span className="text-[10px] text-gray-500 group-open:rotate-180 transition-transform">▼</span>
                             </summary>
-                            <div className="px-3 py-2 text-sm text-gray-400 border-t border-gray-600 cursor-text whitespace-pre-wrap">
+                            <div className="px-3 py-2 text-xs text-gray-400 border-t border-gray-700/80 cursor-text whitespace-pre-wrap bg-gray-900/50">
                                 {t}
                             </div>
                         </details>
                     ))}
 
-                    {cleanContent.trim() && (
-                        <div className="markdown text-sm text-gray-300" dangerouslySetInnerHTML={{ __html: marked.parse(cleanContent) }} />
+                    {/* Skill Injected Badges */}
+                    {selectedSkills.map((sk, idx) => (
+                        <div key={idx} className="border border-purple-500/40 bg-purple-950/20 rounded-lg p-2.5 flex items-start gap-2.5 shadow-sm">
+                            <span className="text-purple-400 text-sm mt-0.5">⚡</span>
+                            <div className="flex flex-col">
+                                <div className="text-xs font-bold text-purple-300 flex items-center gap-2">
+                                    <span>Framework Activated:</span>
+                                    <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-200 border border-purple-500/30 font-mono">{sk.name}</span>
+                                </div>
+                                {sk.reason && <p className="text-xs text-gray-400 mt-1">{sk.reason}</p>}
+                            </div>
+                        </div>
+                    ))}
+
+                    {/* Python Tool Execution Cards */}
+                    {usedSkills.map((us, idx) => (
+                        <div key={idx} className="border border-emerald-500/40 bg-emerald-950/20 rounded-lg p-3 flex flex-col gap-1.5 shadow-sm">
+                            <div className="flex items-center justify-between text-xs font-bold text-emerald-400">
+                                <div className="flex items-center gap-1.5">
+                                    <span>⚙️</span> Executing Tool: <span className="font-mono text-emerald-200">{us.name}</span>
+                                </div>
+                                <span className="text-[10px] uppercase tracking-wider text-emerald-500/80">workspace/skills</span>
+                            </div>
+                            {us.args && (
+                                <pre className="text-xs text-gray-300 font-mono bg-black/40 p-2 rounded border border-emerald-500/20 overflow-x-auto">
+                                    python {us.name} {us.args}
+                                </pre>
+                            )}
+                        </div>
+                    ))}
+
+                    {/* Spawned Swarm Workers */}
+                    {workers.length > 0 && (
+                        <div className="flex flex-col gap-2">
+                            <div className="text-xs font-bold text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
+                                <span>🤖</span> Swarm Workers Deployed ({workers.length})
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                                {workers.map((w, idx) => (
+                                    <div key={idx} className="border border-blue-500/30 bg-gray-800/90 rounded-lg p-3 flex flex-col justify-between shadow-sm hover:border-blue-500/60 transition">
+                                        <div>
+                                            <div className="flex items-center justify-between gap-2 mb-2">
+                                                <span className="text-xs font-bold text-white bg-blue-600/30 border border-blue-500/40 px-2 py-0.5 rounded">
+                                                    {w.role}
+                                                </span>
+                                                {w.skill && (
+                                                    <span className="text-[10px] font-mono text-purple-300 bg-purple-950/50 border border-purple-500/30 px-1.5 py-0.5 rounded truncate max-w-[140px]" title={w.skill}>
+                                                        ⚡ {w.skill}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-gray-300 leading-relaxed line-clamp-3">{w.task}</p>
+                                        </div>
+                                        <div className="mt-2.5 pt-2 border-t border-gray-700/60 flex items-center justify-between text-[10px] text-gray-400">
+                                            <span>Sub-Agent #{idx + 1}</span>
+                                            <span className="flex items-center gap-1 text-emerald-400">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Parallel Running
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                     )}
 
+                    {/* Hyperframes Cinematic Video Card */}
+                    {hyperframes.map((hf, idx) => (
+                        <div key={idx} className="border border-amber-500/40 bg-amber-950/20 rounded-lg p-3 flex items-center justify-between shadow-sm">
+                            <div className="flex items-center gap-2">
+                                <span className="text-lg">🎬</span>
+                                <div>
+                                    <div className="text-xs font-bold text-amber-300">Rendering Video via Hyperframes</div>
+                                    <div className="text-[11px] text-gray-400 font-mono">workspace/{hf.filename}</div>
+                                </div>
+                            </div>
+                            <span className="text-xs bg-amber-500/20 text-amber-200 border border-amber-500/30 px-2 py-1 rounded font-semibold">GSAP 4K</span>
+                        </div>
+                    ))}
+
+                    {/* Markdown Body */}
+                    {working.trim() && (
+                        <div className="markdown text-sm text-gray-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: marked.parse(working) }} />
+                    )}
+
+                    {/* Standard Tool Execution */}
                     {tools.map((t, idx) => (
-                        <div key={idx} className="border border-blue-500/30 bg-blue-500/5 rounded-md p-3 flex flex-col gap-2">
+                        <div key={idx} className="border border-blue-500/30 bg-blue-500/5 rounded-lg p-3 flex flex-col gap-2 shadow-sm">
                             <div className="flex items-center gap-2 text-blue-400 text-xs font-bold uppercase tracking-wider">
                                 <span>🛠️</span> {t.type.replace('_', ' ')}
                             </div>
-                            <pre className="text-xs text-gray-300 whitespace-pre-wrap max-h-32 overflow-y-auto">{t.body}</pre>
+                            <pre className="text-xs text-gray-300 whitespace-pre-wrap max-h-36 overflow-y-auto font-mono bg-black/30 p-2 rounded border border-gray-800">{t.body}</pre>
                         </div>
                     ))}
                 </div>
@@ -101,23 +248,64 @@
             const [files, setFiles] = useState([]);
             const [isStreaming, setIsStreaming] = useState(false);
             const [abortController, setAbortController] = useState(null);
-                        const [uncensored, setUncensored] = useState(false);
             const [selectedModel, setSelectedModel] = useState('qwen2.5-coder:latest');
+            const [uncensored, setUncensored] = useState(false);
+            
+            // Governance Modal State
             const [showGovernance, setShowGovernance] = useState(false);
             const [govData, setGovData] = useState(null);
 
-            useEffect(() => {
-                if(showGovernance && !govData) {
-                    fetch('/governance_stats')
-                        .then(r => r.json())
-                        .then(d => setGovData(d))
-                        .catch(e => console.error(e));
-                }
-            }, [showGovernance]);
+            // Skills Toolkit Modal State
+            const [showSkillsModal, setShowSkillsModal] = useState(false);
+            const [skillsList, setSkillsList] = useState([]);
+            const [skillsLoading, setSkillsLoading] = useState(false);
+            const [skillCategory, setSkillCategory] = useState('all');
+            const [skillSearch, setSkillSearch] = useState('');
+            const [selectedSkillPreview, setSelectedSkillPreview] = useState(null);
+            const [previewLoading, setPreviewLoading] = useState(false);
+
             const messagesEndRef = useRef(null);
 
+            // Fetch Skills Toolkit
+            const loadSkills = async () => {
+                setSkillsLoading(true);
+                try {
+                    const res = await fetch('/api/skills');
+                    const data = await res.json();
+                    if (data && data.skills) {
+                        setSkillsList(data.skills);
+                    }
+                } catch(e) {
+                    console.error("Failed to fetch skills:", e);
+                } finally {
+                    setSkillsLoading(false);
+                }
+            };
+
+            const viewSkillDetail = async (slug) => {
+                setPreviewLoading(true);
+                try {
+                    const res = await fetch(`/api/skills/${encodeURIComponent(slug)}`);
+                    const data = await res.json();
+                    setSelectedSkillPreview(data);
+                } catch(e) {
+                    console.error("Failed to load skill detail:", e);
+                } finally {
+                    setPreviewLoading(false);
+                }
+            };
+
+            const injectSkillIntoPrompt = (slug, isPythonTool) => {
+                if (isPythonTool) {
+                    setInput(prev => prev + (prev ? '\n' : '') + `<use_skill>\n  <name>${slug}</name>\n  <args>--quick</args>\n</use_skill>`);
+                } else {
+                    setInput(prev => prev + (prev ? '\n' : '') + `<select_skill>\n  <skill_name>${slug}</skill_name>\n  <reason>Equip swarm with this framework</reason>\n</select_skill>`);
+                }
+                setShowSkillsModal(false);
+            };
+
+            // Deduplicate Sessions on Load
             useEffect(() => {
-                // Auto-cleanup duplicate sessions by title
                 setSessions(prev => {
                     const unique = [];
                     const seen = new Set();
@@ -127,52 +315,49 @@
                             unique.push(s);
                         }
                     }
-                    if (unique.length !== prev.length) {
-                        localStorage.setItem('swarmV2Sessions', JSON.stringify(unique));
-                        return unique;
-                    }
-                    return prev;
+                    return unique;
                 });
             }, []);
 
+            // Save History & Sessions to LocalStorage
             useEffect(() => {
                 localStorage.setItem('swarmV2History', JSON.stringify(history));
                 localStorage.setItem('swarmV2SessionId', currentSessionId);
-                
-                // Auto-save session
+                localStorage.setItem('swarmV2Sessions', JSON.stringify(sessions));
+
+                // Auto update current session title and preview
                 if (history.length > 0) {
                     setSessions(prev => {
                         const existing = prev.findIndex(s => s.id === currentSessionId);
                         const title = history.find(h => h.role === 'user')?.content.substring(0, 30) + '...' || 'New Chat';
                         const newSessions = [...prev];
                         if (existing >= 0) {
+                            newSessions[existing].title = title;
                             newSessions[existing].history = history;
                         } else {
-                            newSessions.unshift({ id: currentSessionId, title, history, date: new Date().toISOString() });
+                            newSessions.unshift({ id: currentSessionId, title, history });
                         }
                         return newSessions;
                     });
                 }
-                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-            }, [history]);
+            }, [history, currentSessionId]);
 
             useEffect(() => {
-                localStorage.setItem('swarmV2Sessions', JSON.stringify(sessions));
-            }, [sessions]);
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, [history, isStreaming]);
 
             const deleteSession = (e, id) => {
                 e.stopPropagation();
                 setSessions(prev => prev.filter(s => s.id !== id));
                 if (currentSessionId === id) {
-                    setHistory([]);
-                    setCurrentSessionId(Date.now().toString());
+                    startNewChat();
                 }
             };
 
             const startNewChat = () => {
                 setHistory([]);
-                setCurrentSessionId(Date.now().toString());
-                setInput('');
+                const newId = Date.now().toString();
+                setCurrentSessionId(newId);
             };
 
             const loadSession = (session) => {
@@ -186,11 +371,10 @@
                     const file = selected[i];
                     const reader = new FileReader();
                     reader.onload = (evt) => {
-                        setFiles(prev => [...prev, { name: file.name, content: evt.target.result }]);
+                        setFiles(prev => [...prev, { name: file.name, type: file.type, content: evt.target.result }]);
                     };
                     reader.readAsDataURL(file);
                 }
-                e.target.value = '';
             };
 
             const removeFile = (idx) => {
@@ -199,45 +383,43 @@
 
             const handleSubmit = async (e) => {
                 if(e) e.preventDefault();
-                if (!input.trim() && files.length === 0) return;
-
-                if (input.trim() === '/clear') {
-                    setHistory([]);
-                    setInput('');
-                    return;
-                }
+                if ((!input.trim() && files.length === 0) || isStreaming) return;
 
                 const userMsg = input.trim();
                 const attached = [...files];
                 
-                setHistory(prev => [...prev, { role: 'user', content: userMsg, attached }]);
                 setInput('');
                 setFiles([]);
-                setIsStreaming(true);
 
-                setHistory(prev => [...prev, { role: 'assistant', content: '', isStreaming: true }]);
+                const newHistory = [...history, { role: 'user', content: userMsg, attached }];
+                setHistory(newHistory);
+                setIsStreaming(true);
 
                 try {
                     const controller = new AbortController();
                     setAbortController(controller);
                     const res = await fetch('/build', {
-                        signal: controller.signal,
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            prompt: userMsg, 
-                            files: attached, 
-                            uncensored: uncensored, 
-                            history: history.slice(-6).map(h => ({ role: h.role, content: h.content }))
-                        })
+                        body: JSON.stringify({
+                            prompt: userMsg,
+                            files: attached,
+                            history: newHistory,
+                            model: selectedModel,
+                            uncensored: uncensored
+                        }),
+                        signal: controller.signal
                     });
 
                     const reader = res.body.getReader();
                     const decoder = new TextDecoder();
                     let buffer = "";
 
+                    // Add placeholder for assistant response
+                    setHistory(prev => [...prev, { role: 'assistant', content: '' }]);
+
                     while (true) {
-                        const {value, done} = await reader.read();
+                        const { done, value } = await reader.read();
                         if (done) break;
                         
                         buffer += decoder.decode(value, {stream: true});
@@ -250,11 +432,11 @@
                                 const chunk = JSON.parse(line);
                                 if (chunk.type === 'stream' && chunk.chunk) {
                                     setHistory(prev => {
-                                        const newHistory = [...prev];
-                                        const lastMsg = { ...newHistory[newHistory.length - 1] };
+                                        const h = [...prev];
+                                        const lastMsg = { ...h[h.length - 1] };
                                         lastMsg.content += chunk.chunk;
-                                        newHistory[newHistory.length - 1] = lastMsg;
-                                        return newHistory;
+                                        h[h.length - 1] = lastMsg;
+                                        return h;
                                     });
                                 } else if (chunk.type === 'finish') {
                                     setSessions(prev => {
@@ -267,10 +449,10 @@
                                     });
                                 } else if (chunk.type === 'action') {
                                     setHistory(prev => {
-                                        const newHistory = [...prev];
-                                        const lastMsg = newHistory[newHistory.length - 1];
+                                        const h = [...prev];
+                                        const lastMsg = h[h.length - 1];
                                         lastMsg.content += `\n\n> **[OVERLORD]** ${chunk.action}: \n> \`\`\`\n> ${chunk.result}\n> \`\`\`\n\n`;
-                                        return newHistory;
+                                        return h;
                                     });
                                 }
                             } catch(err) {}
@@ -279,139 +461,165 @@
                 } catch(err) {
                     if (err.name === 'AbortError') {
                         setHistory(prev => {
-                            const newHistory = [...prev];
-                            newHistory[newHistory.length - 1].content += "\n\n⚠️ **Generation stopped by user.**";
-                            return newHistory;
+                            const h = [...prev];
+                            h[h.length - 1].content += "\n\n⚠️ **Generation stopped by user.**";
+                            return h;
                         });
                     } else {
-                        console.error('Fetch error:', err);
                         setHistory(prev => {
-                            const newHistory = [...prev];
-                            newHistory[newHistory.length - 1].content = "⚠️ Connection error to backend.";
-                            return newHistory;
+                            const h = [...prev];
+                            h[h.length - 1].content = "⚠️ Connection error to backend.";
+                            return h;
                         });
                     }
                 } finally {
-                    setAbortController(null);
                     setIsStreaming(false);
+                    setAbortController(null);
                     setHistory(prev => {
-                        const newHistory = [...prev];
-                        if (newHistory[newHistory.length - 1]) {
-                            newHistory[newHistory.length - 1].isStreaming = false;
+                        const h = [...prev];
+                        if (h[h.length - 1]) {
+                            h[h.length - 1].content = h[h.length - 1].content.trim();
                         }
-                        return newHistory;
+                        return h;
                     });
                 }
             };
 
+            // Filtered Skills
+            const filteredSkills = skillsList.filter(s => {
+                const matchesCat = skillCategory === 'all' || s.category === skillCategory;
+                const matchesQuery = !skillSearch || 
+                    s.name.toLowerCase().includes(skillSearch.toLowerCase()) || 
+                    s.description.toLowerCase().includes(skillSearch.toLowerCase()) ||
+                    s.slug.toLowerCase().includes(skillSearch.toLowerCase());
+                return matchesCat && matchesQuery;
+            });
+
             return (
-                <div className="flex h-screen bg-gray-900 text-gray-300">
+                <div className="flex h-screen bg-gray-900 text-gray-300 font-sans">
                     {/* Left Sidebar */}
-                    <div className="w-64 border-r border-gray-700 bg-gray-800 flex flex-col">
-                        <div className="p-4 border-b border-gray-700 flex items-center gap-2 font-bold text-white tracking-wider">
-                            <span className="text-blue-500">⚡</span> Swarm IDE 
-                        </div>
-                        
-                        <div className="flex-1 overflow-y-auto flex flex-col">
-                            <div className="p-4">
-                                <div className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Settings</div>
-                                <div className="mb-4">
-                                    <label className="block text-xs text-gray-400 mb-1">Model</label>
-                                    <select 
-                                        value={selectedModel}
-                                        onChange={(e) => setSelectedModel(e.target.value)}
-                                        className="w-full bg-gray-800 border border-gray-700 text-sm rounded px-2 py-1 text-white focus:outline-none focus:border-blue-500"
+                    <div className="w-64 border-r border-gray-700 bg-gray-800 flex flex-col justify-between">
+                        <div className="flex flex-col flex-1 overflow-hidden">
+                            {/* App Header */}
+                            <div className="p-4 border-b border-gray-700 flex items-center justify-between font-bold text-white tracking-wider">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-blue-500 text-lg">⚡</span> Swarm IDE
+                                </div>
+                                <button 
+                                    onClick={startNewChat}
+                                    className="p-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded text-xs transition active:scale-[0.97]"
+                                    title="New Chat"
+                                >
+                                    + New
+                                </button>
+                            </div>
+                            
+                            <div className="flex-1 overflow-y-auto flex flex-col">
+                                {/* Settings */}
+                                <div className="p-4">
+                                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Model Engine</div>
+                                    <div className="mb-4">
+                                        <select 
+                                            value={selectedModel}
+                                            onChange={(e) => setSelectedModel(e.target.value)}
+                                            className="w-full bg-gray-900 border border-gray-700 text-sm rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        >
+                                            <option value="qwen2.5-coder:latest">Qwen2.5-Coder (7B)</option>
+                                            <option value="llama3.1:8b">Llama-3.1 (8B)</option>
+                                            <option value="deepseek-r1:7b">DeepSeek-R1 (7B)</option>
+                                            <option value="hermes3:8b">Hermes-3 (8B)</option>
+                                        </select>
+                                    </div>
+                                    <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer hover:text-white transition select-none">
+                                        <input type="checkbox" checked={uncensored} onChange={(e) => setUncensored(e.target.checked)} className="accent-red-500 rounded" />
+                                        Unrestricted Heretic Mode
+                                    </label>
+                                </div>
+
+                                {/* Skills Toolkit Button */}
+                                <div className="px-4">
+                                    <button 
+                                        onClick={() => { setShowSkillsModal(true); loadSkills(); }}
+                                        className="w-full py-2 bg-gradient-to-r from-purple-900/40 to-blue-900/40 border border-purple-500/40 hover:border-purple-400 text-purple-200 rounded-lg text-xs transition font-semibold shadow-sm flex items-center justify-center gap-2 active:scale-[0.97]"
                                     >
-                                        <option value="qwen2.5-coder:latest">Qwen2.5-Coder (7B)</option>
-                                        <option value="llama3.1:8b">Llama-3.1 (8B)</option>
-                                        <option value="deepseek-r1:7b">DeepSeek-R1 (7B)</option>
-                                        <option value="hermes3:8b">Hermes-3 (8B)</option>
-                                    </select>
+                                        <span className="text-sm">⚡</span> Skills Toolkit ({skillsList.length || 83})
+                                    </button>
                                 </div>
-                                <label className="flex items-center gap-2 text-sm cursor-pointer hover:text-white transition">
-                                    <input type="checkbox" checked={uncensored} onChange={(e) => setUncensored(e.target.checked)} className="accent-red-500" />
-                                    Heretic Mode (Uncensored)
-                                </label>
-                            </div>
-                            
-                                                        <div className="mt-4 px-4">
-                                <button onClick={() => setShowGovernance(true)} className="w-full py-2 bg-gray-800 border border-gray-600 hover:bg-gray-700 text-gray-300 rounded text-xs transition font-semibold shadow-sm flex items-center justify-center gap-2">
-                                    <span>🛡️</span> Governance Log
-                                </button>
-                            </div>
-                            
-                            <div className="px-4 pb-2">
-                                <div className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3 mt-4">Sessions</div>
-                                <div className="flex flex-col gap-1 overflow-y-auto max-h-64">
-                                    {sessions.length === 0 ? <div className="text-xs text-gray-600">No recent chats</div> : 
-                                        sessions.map(s => (
-                                            <div 
-                                                key={s.id} 
-                                                onClick={() => loadSession(s)}
-                                                className={`group flex items-center justify-between text-sm cursor-pointer py-1.5 px-2 rounded ${currentSessionId === s.id ? 'bg-blue-600/20 text-blue-400' : 'hover:bg-gray-700 text-gray-400 hover:text-white'}`}
-                                            >
-                                                <div className="flex flex-col min-w-0 w-full">
-                                                    <span className="truncate pr-2">{s.title}</span>
-                                                    {s.metrics && <span className="text-[10px] text-gray-500 truncate mt-0.5">[TPS: {s.metrics.peak_tps} | Tokens: {s.metrics.total_tokens}]</span>}
-                                                </div>
-                                                <button 
-                                                    onClick={(e) => deleteSession(e, s.id)}
-                                                    className="text-gray-500 hover:text-red-400 text-lg leading-none px-1 rounded hover:bg-red-400/10 transition flex-shrink-0"
-                                                    title="Delete Session"
+
+                                {/* Governance Log Button */}
+                                <div className="mt-2 px-4">
+                                    <button 
+                                        onClick={() => setShowGovernance(true)} 
+                                        className="w-full py-2 bg-gray-900 border border-gray-700 hover:bg-gray-700 text-gray-300 rounded-lg text-xs transition font-semibold shadow-sm flex items-center justify-center gap-2 active:scale-[0.97]"
+                                    >
+                                        <span>🛡️</span> Governance Log
+                                    </button>
+                                </div>
+                                
+                                {/* Sessions */}
+                                <div className="px-4 pb-2 mt-4 flex-1 overflow-hidden flex flex-col">
+                                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">Sessions</div>
+                                    <div className="flex flex-col gap-1 overflow-y-auto flex-1">
+                                        {sessions.length === 0 ? <div className="text-xs text-gray-600">No recent chats</div> : 
+                                            sessions.map(s => (
+                                                <div 
+                                                    key={s.id} 
+                                                    onClick={() => loadSession(s)}
+                                                    className={`group flex items-center justify-between text-xs cursor-pointer py-2 px-2.5 rounded-lg transition ${currentSessionId === s.id ? 'bg-blue-600/20 text-blue-300 border border-blue-500/30' : 'hover:bg-gray-700/60 text-gray-400 hover:text-white'}`}
                                                 >
-                                                    &times;
-                                                </button>
-                                            </div>
-                                        ))
-                                    }
+                                                    <div className="flex flex-col min-w-0 w-full">
+                                                        <span className="truncate pr-2 font-medium">{s.title}</span>
+                                                        {s.metrics && (
+                                                            <span className="text-[10px] text-gray-500 tabular-nums truncate mt-0.5">
+                                                                TPS: {s.metrics.peak_tps} | Tokens: {s.metrics.total_tokens}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <button 
+                                                        onClick={(e) => deleteSession(e, s.id)}
+                                                        className="text-gray-500 hover:text-red-400 text-sm px-1 rounded transition opacity-0 group-hover:opacity-100"
+                                                        title="Delete Session"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            ))
+                                        }
+                                    </div>
                                 </div>
                             </div>
-                            <div className="mt-auto p-4 border-t border-gray-700">
-                                <button onClick={startNewChat} className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm transition font-medium shadow">
-                                    + New Workspace Chat
-                                </button>
-                            </div>
+                        </div>
+
+                        {/* Sidebar Footer */}
+                        <div className="p-3 border-t border-gray-700 text-[11px] text-gray-500 flex items-center justify-between">
+                            <span>Living RAG v2</span>
+                            <span className="flex items-center gap-1 text-emerald-400">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Swarm Online
+                            </span>
                         </div>
                     </div>
 
-                                        {/* Center Canvas */}
-
                     {/* Governance Modal */}
                     {showGovernance && (
-                        <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center backdrop-blur-sm">
-                            <div className="bg-gray-800 border border-gray-600 rounded-xl p-6 shadow-2xl w-full max-w-lg">
-                                <div className="flex justify-between items-center mb-6">
-                                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                        <span>🛡️</span> Swarm Governance
-                                    </h3>
-                                    <button onClick={() => setShowGovernance(false)} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
-                                </div>
+                        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className="bg-gray-800 border border-gray-700 rounded-xl max-w-2xl w-full p-6 shadow-2xl relative">
+                                <button onClick={() => setShowGovernance(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white text-lg">✕</button>
+                                <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><span>🛡️</span> Swarm Governance Auditing</h3>
                                 {govData ? (
-                                    <div className="space-y-4">
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="bg-gray-900 rounded p-4 border border-gray-700">
-                                                <div className="text-xs text-gray-500 uppercase font-bold">Total Sessions</div>
-                                                <div className="text-2xl text-blue-400 font-medium">{govData.total_sessions}</div>
+                                    <div className="flex flex-col gap-4">
+                                        <div className="grid grid-cols-3 gap-3">
+                                            <div className="bg-gray-900 rounded-lg p-3 border border-gray-700">
+                                                <div className="text-[10px] text-gray-500 uppercase font-bold">Total Sessions</div>
+                                                <div className="text-2xl text-blue-400 font-medium tabular-nums">{govData.total_sessions}</div>
                                             </div>
-                                            <div className="bg-gray-900 rounded p-4 border border-gray-700">
-                                                <div className="text-xs text-gray-500 uppercase font-bold">Total Actions</div>
-                                                <div className="text-2xl text-green-400 font-medium">{govData.total_actions}</div>
+                                            <div className="bg-gray-900 rounded-lg p-3 border border-gray-700">
+                                                <div className="text-[10px] text-gray-500 uppercase font-bold">Uncensored Sessions</div>
+                                                <div className="text-2xl text-red-400 font-medium tabular-nums">{govData.uncensored_sessions}</div>
                                             </div>
-                                            <div className="bg-gray-900 rounded p-4 border border-gray-700">
-                                                <div className="text-xs text-gray-500 uppercase font-bold">Heretic Sessions</div>
-                                                <div className="text-2xl text-red-400 font-medium">{govData.uncensored_sessions}</div>
+                                            <div className="bg-gray-900 rounded-lg p-3 border border-gray-700">
+                                                <div className="text-[10px] text-gray-500 uppercase font-bold">Audit Database</div>
+                                                <div className="text-xs text-emerald-400 font-mono mt-1">governance.db</div>
                                             </div>
-                                            <div className="bg-gray-900 rounded p-4 border border-gray-700">
-                                                <div className="text-xs text-gray-500 uppercase font-bold">Models Used</div>
-                                                <div className="text-sm text-gray-300 font-medium mt-1">
-                                                    {Object.entries(govData.models_used || {}).map(([k,v]) => (
-                                                        <div key={k}>{k}: {v}</div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="text-xs text-gray-500 mt-4 text-center">
-                                            Logs are permanently written to local SQLite database: workspace/governance.db
                                         </div>
                                     </div>
                                 ) : (
@@ -420,29 +628,194 @@
                             </div>
                         </div>
                     )}
+
+                    {/* Skills Toolkit Modal */}
+                    {showSkillsModal && (
+                        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className="bg-gray-900 border border-gray-700 rounded-2xl max-w-5xl w-full h-[85vh] flex flex-col shadow-2xl overflow-hidden relative">
+                                {/* Header */}
+                                <div className="p-4 border-b border-gray-800 flex items-center justify-between bg-gray-850">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-lg bg-purple-600/20 border border-purple-500/40 flex items-center justify-center text-purple-300 font-bold">⚡</div>
+                                        <div>
+                                            <h3 className="text-base font-bold text-white">Agent Skills Arsenal</h3>
+                                            <p className="text-xs text-gray-400">83 portable agent frameworks and executable Python tools ready for Swarm deployment</p>
+                                        </div>
+                                    </div>
+                                    <button 
+                                        onClick={() => { setShowSkillsModal(false); setSelectedSkillPreview(null); }} 
+                                        className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800 transition text-lg"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+
+                                {/* Search & Category Tabs */}
+                                <div className="p-4 border-b border-gray-800 flex flex-col md:flex-row gap-3 items-center justify-between bg-gray-900">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        {[
+                                            { id: 'all', label: 'All Skills' },
+                                            { id: 'interface', label: '🎨 Interface & Polish' },
+                                            { id: 'swarm-coordination', label: '🤖 Swarm QA & Review' },
+                                            { id: 'research', label: '🔍 Research & Intel' },
+                                            { id: 'python_tool', label: '⚙️ Python Tools' },
+                                            { id: 'design-theme', label: '📐 Design Themes' }
+                                        ].map(tab => (
+                                            <button
+                                                key={tab.id}
+                                                onClick={() => setSkillCategory(tab.id)}
+                                                className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition active:scale-[0.97] ${skillCategory === tab.id ? 'bg-purple-600 text-white shadow' : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'}`}
+                                            >
+                                                {tab.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="w-full md:w-64">
+                                        <input
+                                            type="text"
+                                            value={skillSearch}
+                                            onChange={(e) => setSkillSearch(e.target.value)}
+                                            placeholder="Search 83 skills..."
+                                            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Body: Split View (Cards on left, Preview on right) */}
+                                <div className="flex-1 flex overflow-hidden">
+                                    {/* Skills Grid */}
+                                    <div className={`overflow-y-auto p-4 flex-1 grid grid-cols-1 md:grid-cols-2 gap-3 ${selectedSkillPreview ? 'max-w-md hidden md:grid' : ''}`}>
+                                        {skillsLoading ? (
+                                            <div className="col-span-2 flex justify-center py-12"><div className="loader"></div></div>
+                                        ) : filteredSkills.length === 0 ? (
+                                            <div className="col-span-2 text-center py-12 text-gray-500 text-sm">No matching skills found.</div>
+                                        ) : (
+                                            filteredSkills.map(sk => (
+                                                <div 
+                                                    key={sk.slug}
+                                                    className={`border rounded-xl p-3.5 flex flex-col justify-between transition shadow-sm ${selectedSkillPreview?.slug === sk.slug ? 'border-purple-500 bg-purple-950/20' : 'border-gray-800 bg-gray-850 hover:border-gray-700'}`}
+                                                >
+                                                    <div>
+                                                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                                                            <span className="text-xs font-bold text-white font-mono truncate" title={sk.name}>
+                                                                {sk.name}
+                                                            </span>
+                                                            <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-semibold border ${
+                                                                sk.category === 'interface' ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300' :
+                                                                sk.category === 'swarm-coordination' ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' :
+                                                                sk.category === 'research' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' :
+                                                                sk.category === 'python_tool' ? 'bg-rose-500/10 border-rose-500/30 text-rose-300' :
+                                                                'bg-purple-500/10 border-purple-500/30 text-purple-300'
+                                                            }`}>
+                                                                {sk.category}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed mb-3">
+                                                            {sk.description}
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-gray-800/80">
+                                                        <button 
+                                                            onClick={() => viewSkillDetail(sk.slug)}
+                                                            className="text-xs text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1 active:scale-[0.97]"
+                                                        >
+                                                            <span>📄</span> View Docs
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => injectSkillIntoPrompt(sk.slug, sk.type === 'python_tool')}
+                                                            className="text-xs bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/40 text-purple-200 px-2 py-1 rounded font-semibold transition active:scale-[0.97]"
+                                                        >
+                                                            + Inject
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+
+                                    {/* Preview Drawer */}
+                                    {selectedSkillPreview && (
+                                        <div className="flex-1 border-l border-gray-800 flex flex-col bg-gray-950 overflow-hidden">
+                                            <div className="p-3.5 border-b border-gray-800 flex items-center justify-between bg-gray-900">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-bold text-white font-mono">{selectedSkillPreview.slug}</span>
+                                                    <span className="text-[10px] text-gray-500 uppercase">{selectedSkillPreview.type}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <button 
+                                                        onClick={() => injectSkillIntoPrompt(selectedSkillPreview.slug, selectedSkillPreview.type === 'python_tool')}
+                                                        className="text-xs bg-purple-600 text-white px-2.5 py-1 rounded-lg font-semibold hover:bg-purple-500 transition active:scale-[0.97]"
+                                                    >
+                                                        Deploy into Swarm
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => setSelectedSkillPreview(null)}
+                                                        className="text-gray-400 hover:text-white text-xs px-2 py-1 rounded hover:bg-gray-800"
+                                                    >
+                                                        Close
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="flex-1 p-4 overflow-y-auto font-mono text-xs text-gray-300 whitespace-pre-wrap leading-relaxed select-text bg-gray-950">
+                                                {previewLoading ? (
+                                                    <div className="flex justify-center py-12"><div className="loader"></div></div>
+                                                ) : (
+                                                    selectedSkillPreview.content
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Main Workspace Area */}
                     <div className="flex-1 flex flex-col relative">
-                        {/* Messages */}
+                        {/* Messages Feed */}
                         <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth">
                             {history.length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center text-gray-500">
+                                <div className="h-full flex flex-col items-center justify-center text-gray-500 max-w-lg mx-auto text-center">
                                     <div className="text-4xl mb-4">⚛️</div>
-                                    <h2 className="text-xl font-medium text-gray-300 mb-2">Welcome to Swarm IDE</h2>
-                                    <p className="max-w-md text-center text-sm">Powered by React, Tailwind, and completely decoupled UI architecture. Attach files, write code, and watch agents execute in isolated Docker containers.</p>
+                                    <h2 className="text-xl font-bold text-white mb-2">Autonomous Multi-Agent Swarm</h2>
+                                    <p className="text-xs text-gray-400 leading-relaxed mb-6">
+                                        Empowered with 83 specialized design engineering, testing, security, and real-time research skills. Ask the Swarm to build apps, audit interfaces, or conduct deep research.
+                                    </p>
+                                    <div className="grid grid-cols-2 gap-2 w-full text-left">
+                                        <button 
+                                            onClick={() => setInput('Build a high-craft dashboard using make-interfaces-feel-better and bento')}
+                                            className="p-3 bg-gray-800/80 border border-gray-700/80 hover:border-blue-500/60 rounded-xl text-xs text-gray-300 transition active:scale-[0.97]"
+                                        >
+                                            <div className="font-bold text-white mb-1">🎨 Bento Dashboard</div>
+                                            <div className="text-[11px] text-gray-400">Micro-polished with concentric radii & spring physics</div>
+                                        </button>
+                                        <button 
+                                            onClick={() => setInput('Research latest AI agent developments from the last 30 days using last30days')}
+                                            className="p-3 bg-gray-800/80 border border-gray-700/80 hover:border-purple-500/60 rounded-xl text-xs text-gray-300 transition active:scale-[0.97]"
+                                        >
+                                            <div className="font-bold text-white mb-1">🔍 30-Day Intelligence</div>
+                                            <div className="text-[11px] text-gray-400">Multi-source scraper across Reddit, HN & GitHub</div>
+                                        </button>
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="max-w-4xl mx-auto flex flex-col gap-6">
                                     {history.map((msg, idx) => (
                                         <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                            {msg.role === 'assistant' && <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center shrink-0 shadow border border-blue-500 text-white"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 4l2.5 3 2.5-3 2.5 3 2.5-3v6H7z"/><rect x="7" y="10" width="10" height="10" rx="5"/><path d="M7 14h10"/><path d="M7 17h10"/><path d="M7 12c-4 0-6-3-6-6s4-3 6 3"/><path d="M17 12c4 0 6-3 6-6s-4-3-6 3"/><path d="M12 20v3"/></svg></div>}
-                                            <div className={`max-w-[85%] rounded-xl p-4 shadow-sm ${msg.role === 'user' ? 'bg-gray-800 border border-gray-700' : 'bg-transparent border-l-2 border-blue-500'}`}>
+                                            {msg.role === 'assistant' && (
+                                                <div className="w-8 h-8 rounded-full bg-blue-600/30 border border-blue-500/40 flex items-center justify-center shrink-0 text-blue-300 font-bold text-sm">
+                                                    ⚡
+                                                </div>
+                                            )}
+                                            <div className={`max-w-[85%] rounded-2xl p-4 shadow-sm ${msg.role === 'user' ? 'bg-gray-800 border border-gray-700 text-gray-200' : 'bg-transparent border-l-2 border-blue-500'}`}>
                                                 {msg.role === 'user' ? (
-                                                    <div className="text-sm text-gray-300 whitespace-pre-wrap">
+                                                    <div className="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">
                                                         {msg.content}
                                                         {msg.attached && msg.attached.length > 0 && (
                                                             <div className="mt-3 flex gap-2 flex-wrap">
                                                                 {msg.attached.map((f, i) => (
-                                                                    <div key={i} className="text-xs bg-gray-900 border border-gray-700 rounded px-2 py-1 flex items-center gap-1">
-                                                                        📄 {f.name}
+                                                                    <div key={i} className="text-xs bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1 flex items-center gap-1.5 font-mono">
+                                                                        <span>📄</span> {f.name}
                                                                     </div>
                                                                 ))}
                                                             </div>
@@ -450,11 +823,23 @@
                                                     </div>
                                                 ) : (
                                                     <div className="flex flex-col gap-2 w-full">
-                                                        {msg.content ? <RichMessage content={msg.content} /> : ((isStreaming && idx === history.length - 1) ? <div className="loader"></div> : <span className="text-red-400 italic text-sm">⚠️ Connection dropped. Empty response.</span>)}
+                                                        {msg.content ? (
+                                                            <RichMessage content={msg.content} />
+                                                        ) : (
+                                                            (isStreaming && idx === history.length - 1) ? (
+                                                                <div className="loader"></div>
+                                                            ) : (
+                                                                <span className="text-red-400 italic text-sm">⚠️ Connection dropped. Empty response.</span>
+                                                            )
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>
-                                            {msg.role === 'user' && <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center shrink-0 border border-gray-600">👤</div>}
+                                            {msg.role === 'user' && (
+                                                <div className="w-8 h-8 rounded-full bg-gray-700 border border-gray-600 flex items-center justify-center shrink-0 text-xs">
+                                                    👤
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                     <div ref={messagesEndRef} />
@@ -463,31 +848,32 @@
                         </div>
 
                         {/* Input Area */}
-                        <div className="p-4 border-t border-gray-700 bg-gray-900/90 backdrop-blur">
+                        <div className="p-4 border-t border-gray-800 bg-gray-900/90 backdrop-blur">
                             <div className="max-w-4xl mx-auto flex flex-col gap-2">
                                 {/* Attached Files Pills */}
                                 {files.length > 0 && (
-                                    <div className="flex gap-2 flex-wrap px-2">
-                                        {files.map((f, idx) => (
-                                            <div key={idx} className="bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs px-2 py-1 rounded-full flex items-center gap-2 shadow-sm">
-                                                📄 {f.name}
-                                                <button onClick={() => removeFile(idx)} className="hover:text-white font-bold">&times;</button>
+                                    <div className="flex gap-2 flex-wrap px-1">
+                                        {files.map((f, i) => (
+                                            <div key={i} className="text-xs bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 flex items-center gap-1.5 text-gray-300">
+                                                <span>📄</span> <span className="truncate max-w-xs">{f.name}</span>
+                                                <button onClick={() => removeFile(i)} className="text-gray-500 hover:text-red-400 text-xs ml-1">✕</button>
                                             </div>
                                         ))}
                                     </div>
                                 )}
-                                
-                                <form onSubmit={handleSubmit} className="relative">
+
+                                {/* Input Form */}
+                                <form onSubmit={handleSubmit} className="relative flex items-center">
                                     <textarea 
                                         value={input}
                                         onChange={(e) => setInput(e.target.value)}
                                         onKeyDown={(e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
-                                        placeholder="Command your Swarm... (Press Enter to send, Shift+Enter for new line)"
-                                        className="w-full bg-gray-800 border border-gray-700 rounded-xl pl-4 pr-24 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none overflow-y-auto max-h-32 shadow-inner transition placeholder-gray-500 text-gray-200"
+                                        placeholder="Command your Swarm... (Press Enter to send, Shift+Enter for newline)"
+                                        className="w-full bg-gray-800/90 border border-gray-700/90 rounded-2xl pl-4 pr-24 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none overflow-y-auto max-h-32 shadow-inner transition placeholder-gray-500 text-gray-200"
                                         rows="2"
                                     />
-                                    <div className="absolute right-2 bottom-3 flex items-center gap-1">
-                                        <label className="cursor-pointer p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition">
+                                    <div className="absolute right-3 bottom-3 flex items-center gap-1.5">
+                                        <label className="cursor-pointer p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-xl transition active:scale-[0.97]" title="Attach File">
                                             <input type="file" multiple onChange={handleFileSelect} className="hidden" />
                                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                                         </label>
@@ -495,7 +881,7 @@
                                             <button 
                                                 type="button" 
                                                 onClick={() => abortController && abortController.abort()}
-                                                className="p-2 bg-red-600 text-white rounded hover:bg-red-500 transition shadow flex items-center justify-center gap-1 text-xs font-bold"
+                                                className="px-3 py-1.5 bg-red-600 text-white rounded-xl hover:bg-red-500 transition shadow flex items-center justify-center gap-1 text-xs font-bold active:scale-[0.97]"
                                                 title="Stop Generation"
                                             >
                                                 ■ Stop
@@ -504,7 +890,8 @@
                                             <button 
                                                 type="submit" 
                                                 disabled={!input.trim() && files.length === 0}
-                                                className="p-2 bg-blue-600 text-white rounded hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition shadow"
+                                                className="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition shadow active:scale-[0.97]"
+                                                title="Send Command"
                                             >
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                                             </button>
@@ -524,10 +911,3 @@
     </script>
 </body>
 </html>
-
-
-
-
-
-
-

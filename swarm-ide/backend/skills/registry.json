@@ -574,5 +574,95 @@
     "stars": 0,
     "score": 0,
     "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\vintage\\SKILL.md"
+  },
+  "last30days": {
+    "name": "last30days",
+    "full_name": "mvanhorn/last30days-skill",
+    "url": "https://github.com/mvanhorn/last30days-skill",
+    "stars": 4200,
+    "score": 98.5,
+    "category": "research",
+    "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\last30days\\SKILL.md"
+  },
+  "make-interfaces-feel-better": {
+    "name": "make-interfaces-feel-better",
+    "full_name": "jakubkrehel/make-interfaces-feel-better",
+    "url": "https://github.com/jakubkrehel/make-interfaces-feel-better",
+    "stars": 3500,
+    "score": 97.0,
+    "category": "interface",
+    "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\make-interfaces-feel-better\\SKILL.md"
+  },
+  "better-interface": {
+    "name": "better-interface",
+    "full_name": "jakubkrehel/skills@better-interface",
+    "url": "https://github.com/jakubkrehel/skills",
+    "stars": 2800,
+    "score": 95.0,
+    "category": "interface",
+    "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\better-interface\\SKILL.md"
+  },
+  "baseline-ui": {
+    "name": "baseline-ui",
+    "full_name": "ibelick/ui-skills@baseline-ui",
+    "url": "https://github.com/ibelick/ui-skills",
+    "stars": 1950,
+    "score": 92.0,
+    "category": "interface",
+    "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\baseline-ui\\SKILL.md"
+  },
+  "create-design-md": {
+    "name": "create-design-md",
+    "full_name": "ibelick/ui-skills@create-design-md",
+    "url": "https://github.com/ibelick/ui-skills",
+    "stars": 1950,
+    "score": 91.5,
+    "category": "interface",
+    "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\create-design-md\\SKILL.md"
+  },
+  "better-accessibility": {
+    "name": "better-accessibility",
+    "full_name": "jakubkrehel/skills@better-accessibility",
+    "url": "https://github.com/jakubkrehel/skills",
+    "stars": 2800,
+    "score": 94.0,
+    "category": "interface",
+    "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\better-accessibility\\SKILL.md"
+  },
+  "requesting-code-review": {
+    "name": "requesting-code-review",
+    "full_name": "obra/skills@requesting-code-review",
+    "url": "https://agenticskills.io/skills/requesting-code-review",
+    "stars": 1600,
+    "score": 90.0,
+    "category": "swarm-coordination",
+    "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\requesting-code-review\\SKILL.md"
+  },
+  "systematic-debugging": {
+    "name": "systematic-debugging",
+    "full_name": "trailofbits/skills@systematic-debugging",
+    "url": "https://agenticskills.io/skills/systematic-debugging",
+    "stars": 2400,
+    "score": 93.5,
+    "category": "swarm-coordination",
+    "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\systematic-debugging\\SKILL.md"
+  },
+  "test-driven-development": {
+    "name": "test-driven-development",
+    "full_name": "agentic/skills@test-driven-development",
+    "url": "https://agenticskills.io/skills/test-driven-development",
+    "stars": 3100,
+    "score": 96.0,
+    "category": "swarm-coordination",
+    "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\test-driven-development\\SKILL.md"
+  },
+  "security-threat-model": {
+    "name": "security-threat-model",
+    "full_name": "trailofbits/skills@security-threat-model",
+    "url": "https://agenticskills.io/skills/security-threat-model",
+    "stars": 2900,
+    "score": 94.5,
+    "category": "swarm-coordination",
+    "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\security-threat-model\\SKILL.md"
   }
 }

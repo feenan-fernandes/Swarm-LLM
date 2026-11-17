@@ -7,6 +7,9 @@ delegates self_heal to the Tester agent, and enforces the iter-6 partial rule.
 import os
 import json
 import re
+import subprocess
+import tempfile
+import shutil
 
 from backend.agents.orchestrator import call_orchestrator
 from backend.agents.tester import diagnose_and_fix
@@ -445,26 +448,48 @@ def run_builder_loop(
                     observation = f"MCP call failed: {e}"
 
             elif action_type == "spawn_worker":
-                tasks = args.get("tasks", [])
+                raw_tasks = args.get("workers") or args.get("tasks", [])
                 import concurrent.futures
                 
-                def _run_subtask(idx, t):
-                    _emit({"type": "system", "msg": f"Sub-Agent {idx+1} spawned: {t[:30]}..."})
-                    prompt = f"You are a fast Swarm Sub-Agent. Your isolated task is: {t}\nReturn a thorough but concise answer."
+                def _run_subtask(idx, w_item):
+                    if isinstance(w_item, dict):
+                        t = w_item.get("task", "")
+                        skill_slug = w_item.get("skill", "")
+                        role_name = w_item.get("role", "Specialized Sub-Agent")
+                    else:
+                        t = str(w_item)
+                        skill_slug = ""
+                        role_name = "Specialized Sub-Agent"
+
+                    _emit({
+                        "type": "system",
+                        "msg": f"Sub-Agent {idx+1} [{role_name}] spawned: {t[:35]}..."
+                    })
+                    
+                    skill_context = ""
+                    if skill_slug:
+                        skill_context = load_skill_context(skill_slug)
+
+                    prompt = f"You are a fast Swarm Sub-Agent operating as '{role_name}'.\n"
+                    if skill_context:
+                        prompt += f"\nYOUR ASSIGNED SKILL FRAMEWORK ({skill_slug}):\n{skill_context}\n"
+                    prompt += f"\nYour isolated task is:\n{t}\n"
+                    prompt += "\nStrictly adhere to your assigned skill framework and quality standards. Return a thorough, production-grade output."
+                    
                     try:
                         res, _ = call_orchestrator(prompt, model=model)
-                        return f"--- Sub-Agent {idx+1} Result ---\n{res}\n"
+                        return f"--- Sub-Agent {idx+1} [{role_name}{f' - {skill_slug}' if skill_slug else ''}] Result ---\n{res}\n"
                     except Exception as e:
-                        return f"--- Sub-Agent {idx+1} Failed ---\n{e}\n"
+                        return f"--- Sub-Agent {idx+1} [{role_name}] Failed ---\n{e}\n"
                 
-                with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(tasks))) as executor:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, max(1, len(raw_tasks)))) as executor:
                     futures = []
-                    for idx, t in enumerate(tasks):
-                        futures.append(executor.submit(_run_subtask, idx, t))
+                    for idx, w in enumerate(raw_tasks):
+                        futures.append(executor.submit(_run_subtask, idx, w))
                     results = [f.result() for f in futures]
                 
                 observation = "Sub-agents completed their parallel tasks:\n\n" + "\n".join(results)
-                _emit({"type": "system", "msg": f"All {len(tasks)} sub-agents completed."})
+                _emit({"type": "system", "msg": f"All {len(raw_tasks)} sub-agents completed."})
 
             elif action_type == "execute_bash":
                 cmd = args.get("command", "")
@@ -515,7 +540,6 @@ def run_builder_loop(
             # 10. FINISH
 
             elif action_type == "render_hyperframes_video":
-                import os, subprocess, tempfile, shutil
                 composition_html = args.get("composition_html", "")
                 output_filename = args.get("output_filename", "video.mp4")
                 output_path = os.path.abspath(os.path.join(os.getcwd(), 'workspace', output_filename))

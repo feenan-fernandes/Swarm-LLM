@@ -18,8 +18,8 @@ def call_orchestrator(conversation_context, model=DEFAULT_MODEL, temperature=0.1
     Calls the local Ollama instance with deepseek-r1:7b.
     Allows injecting a `mock_response` for isolated unit tests.
     """
-    if mock_response:
-        return mock_response, {'prompt_tokens': 0, 'completion_tokens': 0, 'eval_duration': 0}
+    if mock_response or model == "mock":
+        return mock_response or "Mock worker completed task with assigned skill.", {'prompt_tokens': 0, 'completion_tokens': 0, 'eval_duration': 0}
         
     sys_prompt = system_prompt if system_prompt is not None else load_system_prompt()
     
