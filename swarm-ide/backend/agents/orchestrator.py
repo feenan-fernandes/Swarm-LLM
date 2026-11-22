@@ -1,6 +1,7 @@
 import json
 import requests
 import os
+from backend.agents.repetition_watchdog import build_ollama_options, RepetitionStreamFilter, sanitize_repetition
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 DEFAULT_MODEL = "qwen2.5-coder:latest"
@@ -48,14 +49,16 @@ def call_orchestrator(conversation_context, model=DEFAULT_MODEL, temperature=0.1
         "model": model,
         "prompt": full_prompt,
         "stream": False,
-        "options": {"temperature": temperature}
+        "options": build_ollama_options(temperature=temperature)
     }
     
     try:
         resp = requests.post(OLLAMA_URL, json=payload, timeout=900)
         if resp.status_code == 200:
             data = resp.json()
-            return data.get("response", ""), {
+            raw_text = data.get("response", "")
+            clean_text = sanitize_repetition(raw_text)
+            return clean_text, {
                 'prompt_tokens': data.get('prompt_eval_count', 0),
                 'completion_tokens': data.get('eval_count', 0),
                 'eval_duration': data.get('eval_duration', 1)
@@ -93,14 +96,25 @@ def stream_orchestrator(conversation_context, model=DEFAULT_MODEL, temperature=0
         "model": model,
         "prompt": full_prompt,
         "stream": True,
-        "options": {"temperature": temperature}
+        "options": build_ollama_options(temperature=temperature)
     }
     
+    stream_filter = RepetitionStreamFilter()
     try:
         with requests.post(OLLAMA_URL, json=payload, stream=True, timeout=900) as resp:
             if resp.status_code == 200:
                 for line in resp.iter_lines():
+                    if abort_event and abort_event.is_set():
+                        break
                     if line:
-                        yield json.loads(line.decode('utf-8'))
+                        chunk_obj = json.loads(line.decode('utf-8'))
+                        chunk_resp = chunk_obj.get("response", "")
+                        if chunk_resp and not stream_filter.push(chunk_resp):
+                            print(f"[Anti-Degeneration Watchdog] Halted repetition loop in stream_orchestrator.")
+                            chunk_obj["response"] = ""
+                            chunk_obj["done"] = True
+                            yield chunk_obj
+                            break
+                        yield chunk_obj
     except Exception as e:
         print(f"Orchestrator Stream Error: {e}")

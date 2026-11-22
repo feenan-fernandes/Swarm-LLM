@@ -123,40 +123,68 @@ def get_governance_metrics():
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     
-    # Total Sessions
-    c.execute('SELECT COUNT(*) as cnt FROM sessions')
-    total_sessions = c.fetchone()['cnt']
-    
-    # Thrashing Sessions (Max iterations 5 and status FAILED/THRASHING)
-    c.execute("SELECT COUNT(*) as cnt FROM sessions WHERE status = 'THRASHING' OR status = 'FAILED'")
-    thrashing_sessions = c.fetchone()['cnt']
-    
-    # Violations
-    c.execute('SELECT COUNT(*) as cnt FROM actions WHERE is_violation = 1')
-    total_violations = c.fetchone()['cnt']
-    
-    # FinOps (Total Tokens & Time)
-    c.execute('SELECT SUM(total_prompt_tokens) as p, SUM(total_completion_tokens) as c, SUM(total_latency_sec) as t FROM sessions')
-    row = c.fetchone()
-    total_prompt = row['p'] or 0
-    total_completion = row['c'] or 0
-    total_time = row['t'] or 0.0
-    
-    # Recent violations (last 5)
-    c.execute('SELECT action_type, content, result FROM actions WHERE is_violation = 1 ORDER BY rowid DESC LIMIT 5')
-    recent_violations = [dict(r) for r in c.fetchall()]
-    
-    conn.close()
-    
-    return {
-        "total_sessions": total_sessions,
-        "thrashing_sessions": thrashing_sessions,
-        "total_violations": total_violations,
-        "total_tokens": total_prompt + total_completion,
-        "total_compute_time": round(total_time, 2),
-        "recent_violations": recent_violations,
-        "thrashing_rate": round((thrashing_sessions / total_sessions * 100) if total_sessions > 0 else 0, 1)
-    }
+    try:
+        # Total Sessions
+        c.execute('SELECT COUNT(*) as cnt FROM sessions')
+        total_sessions = c.fetchone()['cnt']
+        
+        # Uncensored (Heretic) Sessions
+        c.execute('SELECT COUNT(*) as cnt FROM sessions WHERE is_uncensored = 1')
+        uncensored_sessions = c.fetchone()['cnt']
+        
+        # Total Logged Actions
+        c.execute('SELECT COUNT(*) as cnt FROM actions')
+        total_actions = c.fetchone()['cnt']
+        
+        # Thrashing Sessions (status FAILED/THRASHING)
+        c.execute("SELECT COUNT(*) as cnt FROM sessions WHERE status = 'THRASHING' OR status = 'FAILED'")
+        thrashing_sessions = c.fetchone()['cnt']
+        
+        # Sandbox Trajectory Violations
+        c.execute('SELECT COUNT(*) as cnt FROM actions WHERE is_violation = 1')
+        total_violations = c.fetchone()['cnt']
+        
+        # FinOps (Total Tokens & Latency)
+        c.execute('SELECT SUM(total_prompt_tokens) as p, SUM(total_completion_tokens) as c, SUM(total_latency_sec) as t FROM sessions')
+        row = c.fetchone()
+        total_prompt = row['p'] or 0
+        total_completion = row['c'] or 0
+        total_time = row['t'] or 0.0
+        
+        # Recent violations (last 5)
+        c.execute('SELECT action_type, content, result FROM actions WHERE is_violation = 1 ORDER BY rowid DESC LIMIT 5')
+        recent_violations = [dict(r) for r in c.fetchall()]
+        
+        # Recent Actions (last 10)
+        c.execute('SELECT session_id, iteration, action_type, content, result, is_violation FROM actions ORDER BY rowid DESC LIMIT 10')
+        recent_actions = []
+        for r in c.fetchall():
+            d = dict(r)
+            content_str = str(d.get('content') or '')
+            result_str = str(d.get('result') or '')
+            d['content_snippet'] = (content_str[:120] + '...') if len(content_str) > 120 else content_str
+            d['result_snippet'] = (result_str[:120] + '...') if len(result_str) > 120 else result_str
+            recent_actions.append(d)
+            
+        # Model usage distribution
+        c.execute('SELECT model, COUNT(*) as cnt FROM sessions GROUP BY model ORDER BY cnt DESC LIMIT 5')
+        model_dist = [dict(r) for r in c.fetchall()]
+        
+        return {
+            "total_sessions": total_sessions,
+            "uncensored_sessions": uncensored_sessions,
+            "total_actions": total_actions,
+            "thrashing_sessions": thrashing_sessions,
+            "total_violations": total_violations,
+            "total_tokens": total_prompt + total_completion,
+            "total_compute_time": round(total_time, 2),
+            "thrashing_rate": round((thrashing_sessions / total_sessions * 100) if total_sessions > 0 else 0, 1),
+            "recent_violations": recent_violations,
+            "recent_actions": recent_actions,
+            "model_dist": model_dist
+        }
+    finally:
+        conn.close()
 
 if __name__ == "__main__":
     init_db()

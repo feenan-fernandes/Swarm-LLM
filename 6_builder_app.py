@@ -7,10 +7,16 @@ import subprocess
 import pickle
 import numpy as np
 import requests
+import sys
 from flask import Flask, request, jsonify, render_template, send_from_directory
 import chromadb
 from chromadb.utils import embedding_functions
 import governance_logger
+
+SWARM_IDE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), 'swarm-ide'))
+if SWARM_IDE_DIR not in sys.path:
+    sys.path.insert(0, SWARM_IDE_DIR)
+from backend.agents.repetition_watchdog import build_ollama_options, sanitize_repetition
 
 import threading
 build_lock = threading.Lock()
@@ -80,11 +86,17 @@ def run_sandbox(code_to_test):
 
 def call_agent(model_name, prompt, temperature=0.3):
     try:
-        payload = {"model": model_name, "prompt": prompt, "stream": False, "options": {"temperature": temperature}}
+        payload = {
+            "model": model_name,
+            "prompt": prompt,
+            "stream": False,
+            "options": build_ollama_options(temperature=temperature)
+        }
         response = requests.post(OLLAMA_URL, json=payload, timeout=900)
         if response.status_code == 200:
             data = response.json()
-            return data.get("response", ""), {
+            raw_text = data.get("response", "")
+            return sanitize_repetition(raw_text), {
                 'prompt_tokens': data.get('prompt_eval_count', 0),
                 'completion_tokens': data.get('eval_count', 0),
                 'eval_duration': data.get('eval_duration', 1)
@@ -518,7 +530,7 @@ def build():
                     elif task_type == "knowledge":
                         from backend.agents.orchestrator import stream_orchestrator
                         
-                        clean_sys = custom_sys or "You are an expert AI assistant. Answer the user conversationally and accurately. Do not use XML tags."
+                        clean_sys = custom_sys or "You are an expert AI assistant. Answer the user conversationally and accurately. Be concise, organized, and avoid repeating points or looping into duplicate phrases. Do not use XML tags."
                         
                         hist_str = "\n--- PREVIOUS CONVERSATION ---\n"
                         for turn in history:
@@ -547,6 +559,8 @@ def build():
                                     'completion_tokens': chunk_data.get('eval_count', 0),
                                     'eval_duration': chunk_data.get('eval_duration', 1)
                                 }
+                        
+                        ans = sanitize_repetition(ans)
                         
 
                         

@@ -1,5 +1,6 @@
 import requests
 import os
+from backend.agents.repetition_watchdog import build_ollama_options, sanitize_repetition
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 TESTER_MODEL = "qwen2.5-coder:7b"
@@ -18,12 +19,12 @@ def call_tester(prompt, use_fallback=False, mock_response=None):
         "model": model,
         "prompt": prompt,
         "stream": False,
-        "options": {"temperature": 0.1},
+        "options": build_ollama_options(temperature=0.1),
     }
     try:
         resp = requests.post(OLLAMA_URL, json=payload, timeout=900)
         if resp.status_code == 200:
-            return resp.json().get("response", "")
+            return sanitize_repetition(resp.json().get("response", ""))
     except Exception as e:
         print(f"Tester Error ({model}): {e}")
     return ""
