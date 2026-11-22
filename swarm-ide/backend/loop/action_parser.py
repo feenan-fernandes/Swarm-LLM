@@ -3,6 +3,7 @@ action_parser.py — Updated with <patch_file> tag (Phase 6)
 All 11 action tags from Section 5 + patch_file.
 """
 import re
+import json
 
 
 def _extract(text, tag, flags=re.DOTALL | re.IGNORECASE):
@@ -149,6 +150,19 @@ def parse_action(xml_text):
             "query": _extract(xml_text, "query") or ""
         }}
 
+    if "<mcp_call" in xml_text:
+        server = _extract(xml_text, "server") or _extract_attr(xml_text, "mcp_call", "server") or ""
+        tool = _extract(xml_text, "tool") or _extract_attr(xml_text, "mcp_call", "tool") or ""
+        raw_args = _extract(xml_text, "arguments") or _extract(xml_text, "args") or "{}"
+        try:
+            parsed_args = json.loads(raw_args) if isinstance(raw_args, str) and raw_args.strip().startswith("{") else {"input": raw_args}
+        except Exception:
+            parsed_args = {"input": raw_args}
+        return {"type": "mcp_call", "args": {
+            "server": server,
+            "tool": tool,
+            "arguments": parsed_args
+        }}
 
     if "<render_hyperframes_video" in xml_text:
         composition_html = _extract(xml_text, "composition_html") or _extract_attr(xml_text, "render_hyperframes_video", "composition_html") or ""
@@ -172,23 +186,7 @@ def parse_action(xml_text):
             "query": _extract(xml_text, "query") or ""
         }}
 
-    if "<search_web>" in xml_text:
-        return {"type": "search_web", "args": {
-            "query": _extract(xml_text, "query") or ""
-        }}
-
-    m_bash = re.search(r'```bash\n?(.*?)\n?```', xml_text, re.DOTALL | re.IGNORECASE)
-    if m_bash:
-        return {"type": "execute_bash", "args": {"command": m_bash.group(1).strip()}}
-
-    m_python = re.search(r'```python\n?(.*?)\n?```', xml_text, re.DOTALL | re.IGNORECASE)
-    if m_python:
-        return {"type": "write_file", "args": {"path": "scratch.py", "content": m_python.group(1).strip()}}
-
-    m_html = re.search(r'`(?:html|wireframe|javascript|css|xml|mermaid)\n?(.*?)\n?`', xml_text, re.DOTALL | re.IGNORECASE)
-    if m_html:
-        return {'type': 'write_file', 'args': {'path': 'index.html', 'content': m_html.group(1).strip()}}
-
+    # Check for <spawn_worker> before falling back to generic markdown code blocks
     worker_blocks = re.findall(r'<spawn_worker>(.*?)</spawn_worker>', xml_text, re.DOTALL | re.IGNORECASE)
     if worker_blocks:
         workers = []
@@ -203,6 +201,18 @@ def parse_action(xml_text):
                 workers.append({"task": task, "skill": skill, "role": role})
         if workers:
             return {"type": "spawn_worker", "args": {"workers": workers, "tasks": workers}}
+
+    m_bash = re.search(r'```bash\s*\n?(.*?)\n?```', xml_text, re.DOTALL | re.IGNORECASE)
+    if m_bash:
+        return {"type": "execute_bash", "args": {"command": m_bash.group(1).strip()}}
+
+    m_python = re.search(r'```python\s*\n?(.*?)\n?```', xml_text, re.DOTALL | re.IGNORECASE)
+    if m_python:
+        return {"type": "write_file", "args": {"path": "scratch.py", "content": m_python.group(1).strip()}}
+
+    m_html = re.search(r'```(?:html|wireframe|javascript|css|xml|mermaid)\s*\n?(.*?)\n?```', xml_text, re.DOTALL | re.IGNORECASE)
+    if m_html:
+        return {'type': 'write_file', 'args': {'path': 'index.html', 'content': m_html.group(1).strip()}}
 
     stripped_text = xml_text.strip()
     if len(stripped_text) > 20:

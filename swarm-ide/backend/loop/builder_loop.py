@@ -589,7 +589,7 @@ def run_builder_loop(
 
             elif action_type == "ask_user":
                 question = args.get("question", "")
-                final_summary = question
+                final_summary = f"<ask_user><question>{question}</question></ask_user>"
                 is_finished = True
                 observation = f"Asking user: {question}"
             elif action_type == "finish":

@@ -664,5 +664,23 @@
     "score": 94.5,
     "category": "swarm-coordination",
     "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\security-threat-model\\SKILL.md"
+  },
+  "frontend-design": {
+    "name": "frontend-design",
+    "full_name": "anthropics/skills@frontend-design",
+    "url": "https://agenticskills.io/skills/frontend-design",
+    "stars": 5400,
+    "score": 99.0,
+    "category": "interface",
+    "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\frontend-design\\SKILL.md"
+  },
+  "landing-page-design": {
+    "name": "landing-page-design",
+    "full_name": "elayadesign/ai-design-skills@landing-page-design",
+    "url": "https://agenticskills.io/skills/landing-page-design",
+    "stars": 4200,
+    "score": 98.2,
+    "category": "interface",
+    "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\landing-page-design\\SKILL.md"
   }
 }

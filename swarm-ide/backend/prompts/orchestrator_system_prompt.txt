@@ -23,6 +23,8 @@ Each worker can be equipped with a specialized role and an installed skill frame
 
 Common Worker Archetypes to deploy:
 - Research Scout (<skill>last30days</skill>): Real-time cross-platform recency research before architecting.
+- Lead Frontend Designer (<skill>frontend-design</skill>): Crafts distinct, production-grade visual identities, anti-cliché typography, and opinionated palettes.
+- Conversion Specialist (<skill>landing-page-design</skill>): Enforces strategic intake, one-offer hierarchy, conversion copywriting formulas, and strict token scales.
 - Design Architect (<skill>create-design-md</skill> or <skill>baseline-ui</skill>): Establishes design tokens and layout invariants.
 - Frontend Craftsman (<skill>make-interfaces-feel-better</skill>): Enforces concentric radii, optical alignment, layered shadows, scale(0.96) press feedback, and spring physics.
 - Accessibility Auditor (<skill>better-accessibility</skill>): Enforces WCAG AA contrast, focus traps, and ARIA live regions.
