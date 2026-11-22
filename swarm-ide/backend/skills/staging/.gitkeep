@@ -1,0 +1,3 @@
+# Quarantined staging directory for dynamically synthesized skills
+# Skills authored by agents must pass the automated evaluation gate (py_compile & spec)
+# before being promoted to live skills and registered in registry.json.

@@ -12,7 +12,7 @@ def _extract(text, tag, flags=re.DOTALL | re.IGNORECASE):
 
 
 def _extract_attr(text, tag, attr):
-    m = re.search(rf'<{tag}\s+{attr}=["\']([^"\']*)["\']', text)
+    m = re.search(rf'<{tag}[^>]*\b{attr}=["\']([^"\']*)["\']', text, re.IGNORECASE)
     return m.group(1).strip() if m else None
 
 
@@ -20,11 +20,102 @@ def extract_thought(xml_text):
     return _extract(xml_text, "think") or ""
 
 
+def _normalize_tool_args(action_type, args):
+    if not isinstance(args, dict):
+        return args
+
+    # Handle execute_bash
+    if action_type == "execute_bash":
+        if "cmd" in args and "command" not in args:
+            args["command"] = args.pop("cmd")
+    # Handle write_file
+    elif action_type == "write_file":
+        if "filename" in args and "path" not in args:
+            args["path"] = args.pop("filename")
+        elif "file" in args and "path" not in args:
+            args["path"] = args.pop("file")
+    # Handle run_test
+    elif action_type == "run_test":
+        if "cmd" in args and "command" not in args:
+            args["command"] = args.pop("cmd")
+    # Handle ask_user
+    elif action_type == "ask_user":
+        if "q" in args and "question" not in args:
+            args["question"] = args.pop("q")
+    # Handle spawn_worker
+    elif action_type == "spawn_worker":
+        if "workers" not in args:
+            if "tasks" in args:
+                args["workers"] = args["tasks"]
+            elif "task" in args:
+                args["workers"] = [{"task": args["task"], "skill": args.get("skill", ""), "role": args.get("role", "Specialized Sub-Agent")}]
+    # Handle update_memory
+    elif action_type == "update_memory":
+        if "target" not in args:
+            args["target"] = "project"
+    # Handle create_skill
+    elif action_type == "create_skill":
+        if "slug" not in args and "name" in args:
+            args["slug"] = args["name"].lower().replace(" ", "-")
+
+    return args
+
+
+def _parse_nous_tool_call(xml_text):
+    """
+    Parses Nous Research Hermes native <tool_call> format containing JSON or function tags:
+    <tool_call>
+    {"name": "write_file", "arguments": {"path": "main.py", "content": "..."}}
+    </tool_call>
+    """
+    m = re.search(r'<tool_call>(.*?)</tool_call>', xml_text, re.DOTALL | re.IGNORECASE)
+    if not m:
+        return None
+    raw = m.group(1).strip()
+    if raw.startswith("```"):
+        raw = re.sub(r'^```[a-zA-Z]*\n', '', raw)
+        raw = re.sub(r'\n```$', '', raw).strip()
+
+    try:
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            name = data.get("name") or data.get("tool") or data.get("action") or ""
+            args = data.get("arguments") or data.get("parameters") or data.get("args") or {}
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except Exception:
+                    args = {"input": args}
+            if name:
+                args = _normalize_tool_args(name, args)
+                return {"type": name, "args": args}
+    except Exception:
+        pass
+
+    # Fallback: <function=...><parameter=...>...</function> style
+    fn_m = re.search(r'<function=([^>]+)>(.*?)</function>', raw, re.DOTALL | re.IGNORECASE)
+    if fn_m:
+        fn_name = fn_m.group(1).strip()
+        body = fn_m.group(2)
+        params = {}
+        for p_m in re.finditer(r'<parameter=([^>]+)>(.*?)</parameter>', body, re.DOTALL | re.IGNORECASE):
+            params[p_m.group(1).strip()] = p_m.group(2).strip()
+        params = _normalize_tool_args(fn_name, params)
+        return {"type": fn_name, "args": params}
+
+    return None
+
+
 def parse_action(xml_text):
     """
     Returns {"type": str, "args": dict} for the first valid action tag found, or None.
-    Handles all Section 5 tags plus <patch_file>.
+    Handles Nous <tool_call>, all Section 5 tags, patch_file, update_memory, and create_skill.
     """
+
+    # 0. Hermes Native <tool_call> Check
+    nous_call = _parse_nous_tool_call(xml_text)
+    if nous_call:
+        return nous_call
 
     if "<plan>" in xml_text:
         return {"type": "plan", "args": {
@@ -70,15 +161,34 @@ def parse_action(xml_text):
             "diff": _extract(xml_text, "diff") or "",
         }}
 
+    if "<update_memory" in xml_text:
+        target = _extract_attr(xml_text, "update_memory", "target") or _extract(xml_text, "target") or "project"
+        content = _extract(xml_text, "content") or ""
+        if not content:
+            m = re.search(r'<update_memory[^>]*>(.*?)</update_memory>', xml_text, re.DOTALL)
+            content = m.group(1).strip() if m else ""
+        return {"type": "update_memory", "args": {
+            "target": target,
+            "content": content
+        }}
+
     if "<create_skill" in xml_text:
         name = _extract(xml_text, "name") or _extract_attr(xml_text, "create_skill", "name") or ""
+        slug = _extract(xml_text, "slug") or _extract_attr(xml_text, "create_skill", "slug") or name.lower().replace(" ", "-")
+        description = _extract(xml_text, "description") or _extract_attr(xml_text, "create_skill", "description") or ""
+        category = _extract(xml_text, "category") or _extract_attr(xml_text, "create_skill", "category") or "tool"
+        instructions = _extract(xml_text, "instructions") or _extract(xml_text, "content") or ""
         code = _extract(xml_text, "code") or _extract_attr(xml_text, "create_skill", "code") or ""
-        if not code:
+        if not code and not instructions:
             m = re.search(r'<create_skill[^>]*>(.*?)</create_skill>', xml_text, re.DOTALL)
             if m and not "<name>" in m.group(1):
                 code = m.group(1).strip()
         return {"type": "create_skill", "args": {
             "name": name,
+            "slug": slug,
+            "description": description,
+            "category": category,
+            "instructions": instructions,
             "code": code,
         }}
 

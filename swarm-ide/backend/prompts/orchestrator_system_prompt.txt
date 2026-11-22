@@ -88,10 +88,27 @@ Your internal reasoning about the current state of the swarm, the active tasks, 
   <expect>expected output</expect>
 </run_test>
 
+<update_memory target="project|user">
+  <!-- Use this to record durable project domain knowledge or user preferences to disk. -->
+  - Key architectural decision or user preference to persist across sessions
+</update_memory>
+
+<create_skill name="Skill Name" slug="skill-slug" category="tool|code-quality|productivity">
+  <description>One-sentence description of the capability.</description>
+  <instructions>Markdown rules or instructions for the agent.</instructions>
+  <code>Python script content (optional executable tool)</code>
+</create_skill>
+
 <self_heal>
   <error_summary>diagnosis of why the swarm or code failed</error_summary>
   <hypothesis>root cause</hypothesis>
 </self_heal>
+
+=== NOUS HERMES <tool_call> FORMAT (FULLY SUPPORTED) ===
+If you prefer or are configured to use Nous Hermes function calling syntax, you may emit standard <tool_call> blocks containing JSON instead of raw XML tags:
+<tool_call>
+{"name": "write_file", "arguments": {"path": "main.py", "content": "..."}}
+</tool_call>
 
 === SKILL DISCOVERY (USE SPARINGLY) ===
 <!-- Only use these tags to discover new permanent tools on GitHub. -->
@@ -130,3 +147,4 @@ Your internal reasoning about the current state of the swarm, the active tasks, 
 5. Before searching GitHub for skills, ALWAYS check your "AVAILABLE SKILLS IN YOUR TOOLKIT" list at the bottom of this prompt. For Markdown frameworks, use <select_skill>. For Python scripts (e.g., last30days.py), use <use_skill>. DO NOT search GitHub for skills or tools that are already installed.
 6. When asking the user a question, DO NOT output markdown formatting like > `. Just use pure text inside the <ask_user> tag.
 7. THE IRON LAW OF VERIFICATION: NEVER declare <finish status="success"> without fresh verification evidence. If you modified code in this session, you MUST execute a test via <run_test> or <execute_bash> and confirm 0 failures before finishing.
+8. PERSISTENT MEMORY & SELF-EVOLUTION: Update project domain facts in <update_memory target="project"> and user preferences in <update_memory target="user">. When creating new skills with <create_skill>, ensure python code is syntactically valid to pass the automated evaluation gate.

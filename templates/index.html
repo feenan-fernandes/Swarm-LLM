@@ -189,7 +189,52 @@
             }
             working = working.replace(legacyActionRegex, '');
 
-            // 11. Extract Standard Tools
+            // 11. Extract Hermes Native Tool Calls
+            const toolCallRegex = /<tool_call>([\s\S]*?)<\/tool_call>/g;
+            let nousToolCalls = [];
+            while ((match = toolCallRegex.exec(working)) !== null) {
+                let raw = match[1].trim();
+                let clean = raw;
+                if (clean.startsWith('```')) {
+                    clean = clean.replace(/^```[a-zA-Z]*\n/, '').replace(/\n```$/, '').trim();
+                }
+                try {
+                    const parsed = JSON.parse(clean);
+                    nousToolCalls.push({
+                        name: parsed.name || parsed.tool || 'tool_call',
+                        args: JSON.stringify(parsed.arguments || parsed.parameters || parsed.args || {}, null, 2)
+                    });
+                } catch(e) {
+                    nousToolCalls.push({ name: 'tool_call', args: raw });
+                }
+            }
+            working = working.replace(toolCallRegex, '');
+
+            // 12. Extract Persistent Memory Updates
+            const memRegex = /<update_memory(?:\s+target="([^"]*)")?>([\s\S]*?)<\/update_memory>/g;
+            let memUpdates = [];
+            while ((match = memRegex.exec(working)) !== null) {
+                memUpdates.push({
+                    target: match[1] || 'project',
+                    content: match[2].trim()
+                });
+            }
+            working = working.replace(memRegex, '');
+
+            // 13. Extract Skill Creation Calls
+            const createSkillRegex = /<create_skill(?:\s+name="([^"]*)")?(?:\s+slug="([^"]*)")?(?:\s+category="([^"]*)")?>([\s\S]*?)<\/create_skill>/g;
+            let createdSkills = [];
+            while ((match = createSkillRegex.exec(working)) !== null) {
+                createdSkills.push({
+                    name: match[1] || 'Dynamic Skill',
+                    slug: match[2] || 'dynamic-skill',
+                    category: match[3] || 'tool',
+                    body: match[4].trim()
+                });
+            }
+            working = working.replace(createSkillRegex, '');
+
+            // 14. Extract Standard Tools
             const toolRegex = /<(execute_bash|write_file|patch_file|replace_block|search_rag|run_test)[\s\S]*?>([\s\S]*?)<\/\1>/g;
             let tools = [];
             while ((match = toolRegex.exec(working)) !== null) {
@@ -410,6 +455,59 @@
                     {working.trim() && (
                         <div className="markdown text-sm text-slate-200 leading-relaxed select-text" dangerouslySetInnerHTML={{ __html: marked.parse(working) }} />
                     )}
+
+                    {/* Persistent Memory Update Cards */}
+                    {memUpdates.map((m, idx) => (
+                        <div key={`mem-${idx}`} className="border border-emerald-500/40 bg-emerald-950/20 rounded-xl p-3.5 flex flex-col gap-2 shadow-sm">
+                            <div className="flex items-center justify-between text-xs font-bold text-emerald-300">
+                                <div className="flex items-center gap-2">
+                                    <span>🧠</span> Persistent Memory Updated ({m.target.toUpperCase()})
+                                </div>
+                                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/30 text-emerald-300">
+                                    workspace/memory/{m.target === 'user' ? 'USER.md' : 'MEMORY.md'}
+                                </span>
+                            </div>
+                            <div className="text-xs text-emerald-100 whitespace-pre-wrap font-mono bg-black/40 p-2.5 rounded-lg border border-emerald-500/20">
+                                {m.content}
+                            </div>
+                        </div>
+                    ))}
+
+                    {/* Hermes Native Tool Call Cards */}
+                    {nousToolCalls.map((tc, idx) => (
+                        <div key={`tc-${idx}`} className="border border-amber-500/40 bg-amber-950/20 rounded-xl p-3.5 flex flex-col gap-2 shadow-sm">
+                            <div className="flex items-center justify-between text-xs font-bold text-amber-300">
+                                <div className="flex items-center gap-2">
+                                    <span>⚡</span> Hermes Tool Call: <span className="font-mono text-white">{tc.name}</span>
+                                </div>
+                                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/30 text-amber-300">
+                                    Nous Format
+                                </span>
+                            </div>
+                            {tc.args && (
+                                <pre className="text-xs text-amber-100 font-mono bg-black/40 p-2.5 rounded-lg border border-amber-500/20 overflow-x-auto">
+                                    {tc.args}
+                                </pre>
+                            )}
+                        </div>
+                    ))}
+
+                    {/* Synthesized Skill Cards */}
+                    {createdSkills.map((cs, idx) => (
+                        <div key={`cs-${idx}`} className="border border-violet-500/40 bg-violet-950/20 rounded-xl p-3.5 flex flex-col gap-2 shadow-sm">
+                            <div className="flex items-center justify-between text-xs font-bold text-violet-300">
+                                <div className="flex items-center gap-2">
+                                    <span>✨</span> Dynamic Skill Synthesized: <span className="font-mono text-white">{cs.name}</span>
+                                </div>
+                                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-violet-500/20 border border-violet-500/30 text-violet-300">
+                                    Eval Gate Active
+                                </span>
+                            </div>
+                            <div className="text-xs text-slate-300 font-mono bg-black/40 p-2.5 rounded-lg border border-violet-500/20 max-h-40 overflow-y-auto whitespace-pre-wrap">
+                                {cs.body}
+                            </div>
+                        </div>
+                    ))}
 
                     {/* Standard Tool Execution */}
                     {tools.map((t, idx) => (

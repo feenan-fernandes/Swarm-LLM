@@ -82,7 +82,45 @@ def run_builder_loop(
     Returns:
         (success: bool, iterations: int, summary: str)
     """
+    workspace_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'workspace'))
+    memory_dir = os.path.join(workspace_dir, "memory")
+    mem_proj_file = os.path.join(memory_dir, "MEMORY.md")
+    mem_user_file = os.path.join(memory_dir, "USER.md")
+
+    # Auto-initialize default persistent memory if missing
+    if not os.path.exists(mem_proj_file):
+        os.makedirs(memory_dir, exist_ok=True)
+        try:
+            with open(mem_proj_file, "w", encoding="utf-8") as f:
+                f.write("# Persistent Project Memory\n\n## Project Overview\n- **Name:** Swarm IDE & Autonomous Builder Runtime\n- **Core Stack:** Python 3.11+, Flask / Waitress, ChromaDB, Tailwind CSS, React Standalone, Ollama Local Models\n- **Supported Models:** `qwen2.5-coder:latest`, `deepseek-r1:7b`, `hermes3:8b` (Uncensored / Heretic)\n\n## Architectural Constraints & Conventions\n- **The Iron Law of Verification:** Never declare `<finish status=\"success\">` without fresh test verification evidence (0 failures).\n- **Persistent Memory:** Track long-term domain knowledge in `MEMORY.md` and user preferences in `USER.md`.\n- **Durable Planning:** Use `task_plan.md` and `progress.md` in workspace to survive context compactions.\n- **Skills Architecture:** 92 registered modular frameworks spanning code-quality, design, architecture, and productivity.\n")
+        except Exception:
+            pass
+
+    if not os.path.exists(mem_user_file):
+        os.makedirs(memory_dir, exist_ok=True)
+        try:
+            with open(mem_user_file, "w", encoding="utf-8") as f:
+                f.write("# Persistent User Profile & Preferences\n\n## User Profile\n- **Role:** Lead Systems Architect & Developer\n- **Environment:** Windows (PowerShell 5.1 / 7)\n- **Primary Goal:** Autonomous, high-craft local multi-agent software engineering without cloud dependencies.\n\n## Working Preferences & Standards\n- **Evidence-Based:** Always provide concrete verification output (terminal exits, test results) before claiming victory.\n- **Frontend Craft:** Anti-slop UI standards (`frontend-design`, `make-interfaces-feel-better`), concentric border radii, spring press physics, and WCAG AA contrast.\n- **Code Quality:** Surgical minimal patches, no unnecessary dependencies, modular architecture.\n")
+        except Exception:
+            pass
+
+    mem_snapshot = ""
+    if os.path.exists(mem_proj_file):
+        try:
+            with open(mem_proj_file, "r", encoding="utf-8", errors="ignore") as f:
+                mem_snapshot += f"\n[PERSISTENT PROJECT MEMORY - MEMORY.md]:\n{f.read(1500).strip()}\n"
+        except Exception:
+            pass
+    if os.path.exists(mem_user_file):
+        try:
+            with open(mem_user_file, "r", encoding="utf-8", errors="ignore") as f:
+                mem_snapshot += f"\n[PERSISTENT USER PROFILE - USER.md]:\n{f.read(1500).strip()}\n"
+        except Exception:
+            pass
+
     conversation = f"USER REQUEST: {task_description}\n"
+    if mem_snapshot:
+        conversation += f"\n=== LONG-TERM MEMORY SNAPSHOTS ===\n{mem_snapshot}\n"
     if skill_context_override:
         conversation += f"\nSKILL CONTEXT:\n{skill_context_override}\n"
     conversation += "\nWhat is your first action?"
@@ -106,14 +144,17 @@ def run_builder_loop(
                 mem_block = compact_trajectory(conversation, model=model)
                 conversation = apply_compaction(conversation, mem_block, keep_last_n_turns=2)
                 
-                # Durable planning-with-files context re-injection:
-                workspace_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'workspace'))
-                for pfile in ["task_plan.md", "progress.md", os.path.join(".swarm", "task_plan.md"), os.path.join(".swarm", "progress.md")]:
+                # Durable planning-with-files and persistent Hermes memory re-injection:
+                for pfile in [
+                    "task_plan.md", "progress.md",
+                    os.path.join(".swarm", "task_plan.md"), os.path.join(".swarm", "progress.md"),
+                    os.path.join("memory", "MEMORY.md"), os.path.join("memory", "USER.md")
+                ]:
                     full_pfile = os.path.join(workspace_dir, pfile)
                     if os.path.exists(full_pfile):
                         try:
                             with open(full_pfile, "r", encoding="utf-8", errors="ignore") as pf:
-                                pcontent = pf.read(2000)
+                                pcontent = pf.read(1500)
                             conversation += f"\n\n[PERSISTENT DISK MEMORY: {pfile}]\n{pcontent}\n"
                         except Exception:
                             pass
@@ -388,20 +429,126 @@ def run_builder_loop(
                     err = validate_file(full_path)
                     if err: observation += "\n" + err
 
-            elif action_type == "create_skill":
-                name = args.get("name", "")
-                code = args.get("code", "")
-                if not name.endswith(".py"): name += ".py"
-                workspace_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'workspace'))
-                skills_dir = os.path.join(workspace_dir, "skills")
-                os.makedirs(skills_dir, exist_ok=True)
+            elif action_type == "update_memory":
+                target = str(args.get("target", "project")).lower()
+                content = str(args.get("content", "")).strip()
+                target_file = mem_user_file if "user" in target else mem_proj_file
+                os.makedirs(os.path.dirname(target_file), exist_ok=True)
                 
-                full_path = os.path.join(skills_dir, os.path.basename(name))
-                with open(full_path, "w", encoding="utf-8") as f:
-                    f.write(code)
-                code_modified = True
-                tests_passed = False
-                observation = f"Skill created and persisted permanently at workspace/skills/{os.path.basename(name)}"
+                try:
+                    import datetime
+                    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                    with open(target_file, "a", encoding="utf-8") as f:
+                        f.write(f"\n\n### Update ({ts})\n{content}\n")
+                    observation = f"Persistent memory updated in {os.path.basename(target_file)}."
+                    _emit({"type": "system", "msg": f"Memory updated: {os.path.basename(target_file)}"})
+                except Exception as e:
+                    observation = f"Error updating memory file {target_file}: {e}"
+
+            elif action_type == "create_skill":
+                name = args.get("name") or "Custom Skill"
+                slug = args.get("slug") or name.lower().replace(" ", "-").replace("/", "-")
+                description = args.get("description") or "Dynamic skill authored by autonomous agent."
+                category = args.get("category") or "tool"
+                instructions = args.get("instructions") or args.get("content") or ""
+                code = args.get("code") or ""
+                
+                # Quarantined staging directory
+                backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+                staging_dir = os.path.join(backend_dir, "skills", "staging", slug)
+                os.makedirs(staging_dir, exist_ok=True)
+                
+                skill_md_path = os.path.join(staging_dir, "SKILL.md")
+                skill_py_path = os.path.join(staging_dir, f"{slug}.py")
+                
+                # Construct SKILL.md
+                skill_md_content = f"""---
+name: {slug}
+description: {description}
+category: {category}
+author: hermes-agent
+tags:
+  - dynamic-skill
+  - self-evolved
+---
+
+# {name}
+
+{description}
+
+## Usage & Instructions
+{instructions if instructions else 'Execute the associated python tool or follow the framework rules.'}
+"""
+                with open(skill_md_path, "w", encoding="utf-8") as f:
+                    f.write(skill_md_content)
+                
+                if code:
+                    with open(skill_py_path, "w", encoding="utf-8") as f:
+                        f.write(code)
+
+                # --- Synthetic Evaluation Gate ---
+                eval_passed = True
+                eval_error = ""
+
+                # 1. Syntax check for Python code
+                if code:
+                    try:
+                        import py_compile
+                        py_compile.compile(skill_py_path, doraise=True)
+                    except Exception as e:
+                        eval_passed = False
+                        eval_error = f"Python syntax check failed: {e}"
+
+                # 2. Spec validation for SKILL.md
+                if eval_passed and (not os.path.exists(skill_md_path) or os.path.getsize(skill_md_path) < 20):
+                    eval_passed = False
+                    eval_error = "SKILL.md is missing or empty."
+
+                if not eval_passed:
+                    observation = (
+                        f"SKILL EVALUATION GATE REJECTION (Self-Evolution Quarantined):\n"
+                        f"The synthesized skill '{slug}' failed automated validation.\n"
+                        f"Reason: {eval_error}\n"
+                        f"The skill remains quarantined in staging/ and will NOT be registered until errors are corrected."
+                    )
+                else:
+                    # Promote from staging to live skills directory!
+                    live_dir = os.path.join(backend_dir, "skills", slug)
+                    os.makedirs(live_dir, exist_ok=True)
+                    shutil.copy2(skill_md_path, os.path.join(live_dir, "SKILL.md"))
+                    if code:
+                        shutil.copy2(skill_py_path, os.path.join(live_dir, f"{slug}.py"))
+                    
+                    # Update registry.json
+                    reg_path = os.path.join(backend_dir, "skills", "registry.json")
+                    try:
+                        reg_data = {}
+                        if os.path.exists(reg_path):
+                            with open(reg_path, "r", encoding="utf-8") as rf:
+                                reg_data = json.load(rf)
+                        reg_data[slug] = {
+                            "name": slug,
+                            "full_name": f"self-evolved/{slug}",
+                            "url": "local",
+                            "stars": 0,
+                            "score": 10.0,
+                            "category": category,
+                            "description": description,
+                            "installed_path": os.path.join(live_dir, "SKILL.md")
+                        }
+                        with open(reg_path, "w", encoding="utf-8") as wf:
+                            json.dump(reg_data, wf, indent=2)
+                    except Exception:
+                        pass
+                    
+                    code_modified = True
+                    observation = (
+                        f"SUCCESS! Skill '{slug}' passed automated evaluation gate and was promoted to live registry.\n"
+                        f"Category: {category}\n"
+                        f"Location: backend/skills/{slug}/SKILL.md\n"
+                        f"You or other swarm agents can now select it via <select_skill><skill_name>{slug}</skill_name></select_skill>."
+                    )
+                    _emit({"type": "system", "msg": f"Self-Evolved Skill Registered: {slug}"})
 
             elif action_type == "use_skill":
                 name = args.get("name", "")
