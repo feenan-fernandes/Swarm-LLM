@@ -51,6 +51,40 @@
         {% raw %}
         const { useState, useEffect, useRef } = React;
 
+        const UnifiedDiffViewer = ({ diffText, title }) => {
+            const lines = (diffText || '').split('\n');
+            return (
+                <div className="border border-slate-700/80 bg-slate-950 rounded-xl overflow-hidden font-mono text-[11px] my-1.5 shadow-md">
+                    {title && (
+                        <div className="px-3.5 py-1.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-slate-400">
+                            <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                                <span className="text-sky-400">📝</span> {title}
+                            </span>
+                            <span className="text-[10px] uppercase tracking-wider text-slate-500 font-sans">Unified Diff</span>
+                        </div>
+                    )}
+                    <div className="overflow-x-auto max-h-64 p-2 leading-tight">
+                        {lines.map((line, lIdx) => {
+                            let lineClass = "text-slate-300 py-0.5 px-2";
+                            if (line.startsWith('+') && !line.startsWith('+++')) {
+                                lineClass = "bg-emerald-950/50 text-emerald-300 border-l-2 border-emerald-500 py-0.5 px-2";
+                            } else if (line.startsWith('-') && !line.startsWith('---')) {
+                                lineClass = "bg-rose-950/50 text-rose-300 border-l-2 border-rose-500 py-0.5 px-2";
+                            } else if (line.startsWith('@@')) {
+                                lineClass = "bg-cyan-950/40 text-cyan-300 font-bold py-0.5 px-2 border-y border-cyan-800/30";
+                            }
+                            return (
+                                <div key={lIdx} className={`flex items-start gap-2 ${lineClass} select-text`}>
+                                    <span className="text-[10px] text-slate-600 select-none w-6 text-right tabular-nums">{lIdx + 1}</span>
+                                    <span className="whitespace-pre-wrap break-all flex-1">{line}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        };
+
         const RichMessage = ({ content }) => {
             let working = content;
 
@@ -509,15 +543,21 @@
                         </div>
                     ))}
 
-                    {/* Standard Tool Execution */}
-                    {tools.map((t, idx) => (
-                        <div key={idx} className="border border-sky-500/30 bg-sky-950/20 rounded-xl p-3.5 flex flex-col gap-2 shadow-sm">
-                            <div className="flex items-center gap-2 text-sky-400 text-xs font-bold uppercase tracking-wider">
-                                <span>🛠️</span> {t.type.replace('_', ' ')}
+                    {/* Standard Tool Execution & Unified Diff */}
+                    {tools.map((t, idx) => {
+                        const isDiff = t.type === 'patch_file' || (t.body && (t.body.includes('@@') || (t.body.includes('---') && t.body.includes('+++'))));
+                        if (isDiff) {
+                            return <UnifiedDiffViewer key={idx} diffText={t.body} title={t.type.replace('_', ' ')} />;
+                        }
+                        return (
+                            <div key={idx} className="border border-sky-500/30 bg-sky-950/20 rounded-xl p-3.5 flex flex-col gap-2 shadow-sm">
+                                <div className="flex items-center gap-2 text-sky-400 text-xs font-bold uppercase tracking-wider">
+                                    <span>🛠️</span> {t.type.replace('_', ' ')}
+                                </div>
+                                <pre className="text-xs text-slate-200 whitespace-pre-wrap max-h-40 overflow-y-auto font-mono bg-black/40 p-2.5 rounded-lg border border-slate-800">{t.body}</pre>
                             </div>
-                            <pre className="text-xs text-slate-200 whitespace-pre-wrap max-h-40 overflow-y-auto font-mono bg-black/40 p-2.5 rounded-lg border border-slate-800">{t.body}</pre>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             );
         };
@@ -548,6 +588,14 @@
             const [previewLoading, setPreviewLoading] = useState(false);
             const [copiedToast, setCopiedToast] = useState(false);
 
+            // Workspace Files & Live Preview State
+            const [activeSidebarTab, setActiveSidebarTab] = useState('sessions'); // 'sessions' | 'workspace'
+            const [workspaceFiles, setWorkspaceFiles] = useState([]);
+            const [workspaceLoading, setWorkspaceLoading] = useState(false);
+            const [selectedWorkspaceFile, setSelectedWorkspaceFile] = useState(null);
+            const [fileContentLoading, setFileContentLoading] = useState(false);
+            const [activeFileViewTab, setActiveFileViewTab] = useState('preview'); // 'preview' | 'code'
+
             const messagesEndRef = useRef(null);
 
             // Keyboard Escape Handler for Modals
@@ -557,10 +605,46 @@
                         setShowSkillsModal(false);
                         setShowGovernance(false);
                         setSelectedSkillPreview(null);
+                        setSelectedWorkspaceFile(null);
                     }
                 };
                 window.addEventListener('keydown', handleKeyDown);
                 return () => window.removeEventListener('keydown', handleKeyDown);
+            }, []);
+
+            // Fetch Workspace Files
+            const loadWorkspaceFiles = async () => {
+                setWorkspaceLoading(true);
+                try {
+                    const res = await fetch('/api/workspace/files');
+                    const data = await res.json();
+                    if (data && data.files) {
+                        setWorkspaceFiles(data.files);
+                    }
+                } catch(e) {
+                    console.error("Failed to fetch workspace files:", e);
+                } finally {
+                    setWorkspaceLoading(false);
+                }
+            };
+
+            // Open Workspace File Content
+            const openWorkspaceFile = async (path) => {
+                setFileContentLoading(true);
+                try {
+                    const res = await fetch(`/api/workspace/file?path=${encodeURIComponent(path)}`);
+                    const data = await res.json();
+                    setSelectedWorkspaceFile(data);
+                    setActiveFileViewTab(data.is_html ? 'preview' : 'code');
+                } catch(e) {
+                    console.error("Failed to load file:", e);
+                } finally {
+                    setFileContentLoading(false);
+                }
+            };
+
+            useEffect(() => {
+                loadWorkspaceFiles();
             }, []);
 
             // Fetch Skills Toolkit
@@ -798,6 +882,7 @@
                         }
                         return h;
                     });
+                    loadWorkspaceFiles();
                 }
             };
 
@@ -896,37 +981,99 @@
                                     </button>
                                 </div>
                                 
-                                {/* Sessions */}
-                                <div className="px-4 pb-2 mt-4 flex-1 overflow-hidden flex flex-col">
-                                    <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Sessions</div>
-                                    <div className="flex flex-col gap-1 overflow-y-auto flex-1">
-                                        {sessions.length === 0 ? <div className="text-xs text-slate-600 p-2">No recent chats</div> : 
-                                            sessions.map(s => (
-                                                <div 
-                                                    key={s.id} 
-                                                    onClick={() => loadSession(s)}
-                                                    className={`group flex items-center justify-between text-xs cursor-pointer py-2 px-2.5 rounded-xl transition ${currentSessionId === s.id ? 'bg-sky-600/20 text-sky-200 border border-sky-500/40' : 'hover:bg-slate-800 text-slate-400 hover:text-white'}`}
+                                {/* Sidebar Switcher: Sessions vs Workspace */}
+                                <div className="px-4 pb-2 mt-3 flex-1 overflow-hidden flex flex-col">
+                                    <div className="flex items-center gap-1 p-1 bg-slate-950 border border-slate-800 rounded-xl mb-3">
+                                        <button
+                                            onClick={() => setActiveSidebarTab('sessions')}
+                                            className={`flex-1 py-1 text-xs rounded-lg font-semibold transition active:scale-[0.97] ${activeSidebarTab === 'sessions' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                                        >
+                                            💬 Sessions
+                                        </button>
+                                        <button
+                                            onClick={() => { setActiveSidebarTab('workspace'); loadWorkspaceFiles(); }}
+                                            className={`flex-1 py-1 text-xs rounded-lg font-semibold transition active:scale-[0.97] flex items-center justify-center gap-1.5 ${activeSidebarTab === 'workspace' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                                        >
+                                            <span>📁</span> Files
+                                            {workspaceFiles.length > 0 && (
+                                                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-sky-500/20 text-sky-300 font-mono">
+                                                    {workspaceFiles.length}
+                                                </span>
+                                            )}
+                                        </button>
+                                    </div>
+
+                                    {activeSidebarTab === 'sessions' ? (
+                                        <div className="flex flex-col gap-1 overflow-y-auto flex-1">
+                                            {sessions.length === 0 ? <div className="text-xs text-slate-600 p-2">No recent chats</div> : 
+                                                sessions.map(s => (
+                                                    <div 
+                                                        key={s.id} 
+                                                        onClick={() => loadSession(s)}
+                                                        className={`group flex items-center justify-between text-xs cursor-pointer py-2 px-2.5 rounded-xl transition ${currentSessionId === s.id ? 'bg-sky-600/20 text-sky-200 border border-sky-500/40' : 'hover:bg-slate-800 text-slate-400 hover:text-white'}`}
+                                                    >
+                                                        <div className="flex flex-col min-w-0 w-full">
+                                                            <span className="truncate pr-2 font-medium">{s.title}</span>
+                                                            {s.metrics && (
+                                                                <span className="text-[10px] text-slate-400 tabular-nums truncate mt-0.5">
+                                                                    TPS: {s.metrics.peak_tps} | Tokens: {s.metrics.total_tokens}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <button 
+                                                            onClick={(e) => deleteSession(e, s.id)}
+                                                            aria-label="Delete Session"
+                                                            className="text-slate-500 hover:text-rose-400 text-sm px-1.5 rounded transition opacity-0 group-hover:opacity-100"
+                                                            title="Delete Session"
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </div>
+                                                ))
+                                            }
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col gap-1 overflow-y-auto flex-1">
+                                            <div className="flex items-center justify-between pb-1.5 px-1 text-[10px] text-slate-400 uppercase tracking-wider font-bold">
+                                                <span>Workspace Artifacts</span>
+                                                <button 
+                                                    onClick={loadWorkspaceFiles}
+                                                    title="Refresh Files" 
+                                                    className="hover:text-white text-xs transition active:rotate-180"
                                                 >
-                                                    <div className="flex flex-col min-w-0 w-full">
-                                                        <span className="truncate pr-2 font-medium">{s.title}</span>
-                                                        {s.metrics && (
-                                                            <span className="text-[10px] text-slate-400 tabular-nums truncate mt-0.5">
-                                                                TPS: {s.metrics.peak_tps} | Tokens: {s.metrics.total_tokens}
+                                                    🔄
+                                                </button>
+                                            </div>
+                                            {workspaceLoading ? (
+                                                <div className="flex justify-center p-6"><div className="loader"></div></div>
+                                            ) : workspaceFiles.length === 0 ? (
+                                                <div className="text-xs text-slate-500 p-3 text-center">Workspace is empty</div>
+                                            ) : (
+                                                workspaceFiles.map(f => (
+                                                    <div
+                                                        key={f.path}
+                                                        onClick={() => openWorkspaceFile(f.path)}
+                                                        className="group flex items-center justify-between text-xs cursor-pointer py-1.5 px-2.5 rounded-xl hover:bg-slate-800 text-slate-300 hover:text-white transition active:scale-[0.98]"
+                                                    >
+                                                        <div className="flex items-center gap-2 min-w-0">
+                                                            <span className="text-sm shrink-0">
+                                                                {f.is_html ? '🌐' : f.name.endsWith('.md') ? '📋' : f.name.endsWith('.py') ? '🐍' : '📄'}
+                                                            </span>
+                                                            <div className="flex flex-col min-w-0">
+                                                                <span className="truncate font-mono text-[11px]">{f.name}</span>
+                                                                <span className="text-[9px] text-slate-500 truncate">{f.path}</span>
+                                                            </div>
+                                                        </div>
+                                                        {f.is_html && (
+                                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase tracking-wider shrink-0">
+                                                                Live
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <button 
-                                                        onClick={(e) => deleteSession(e, s.id)}
-                                                        aria-label="Delete Session"
-                                                        className="text-slate-500 hover:text-rose-400 text-sm px-1.5 rounded transition opacity-0 group-hover:opacity-100"
-                                                        title="Delete Session"
-                                                    >
-                                                        ✕
-                                                    </button>
-                                                </div>
-                                            ))
-                                        }
-                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -939,6 +1086,94 @@
                             </span>
                         </div>
                     </div>
+
+                    {/* Workspace File Viewer Modal */}
+                    {selectedWorkspaceFile && (
+                        <div 
+                            role="dialog" 
+                            aria-modal="true" 
+                            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                        >
+                            <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-5xl w-full h-[88vh] flex flex-col shadow-2xl overflow-hidden relative">
+                                {/* Header */}
+                                <div className="p-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-850">
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-xl">
+                                            {selectedWorkspaceFile.is_html ? '🌐' : selectedWorkspaceFile.name.endsWith('.md') ? '📋' : '📄'}
+                                        </span>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <h3 className="text-sm font-bold text-white font-mono">{selectedWorkspaceFile.name}</h3>
+                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-mono">
+                                                    {(selectedWorkspaceFile.size / 1024).toFixed(1)} KB
+                                                </span>
+                                            </div>
+                                            <p className="text-[11px] text-slate-500 font-mono">workspace/{selectedWorkspaceFile.path}</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-2">
+                                        {selectedWorkspaceFile.is_html && (
+                                            <div className="flex items-center p-1 bg-slate-950 border border-slate-800 rounded-xl mr-2">
+                                                <button
+                                                    onClick={() => setActiveFileViewTab('preview')}
+                                                    className={`px-2.5 py-1 text-xs rounded-lg font-semibold transition ${activeFileViewTab === 'preview' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                                                >
+                                                    🖥️ Live Preview
+                                                </button>
+                                                <button
+                                                    onClick={() => setActiveFileViewTab('code')}
+                                                    className={`px-2.5 py-1 text-xs rounded-lg font-semibold transition ${activeFileViewTab === 'code' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                                                >
+                                                    📄 Source Code
+                                                </button>
+                                            </div>
+                                        )}
+                                        <button
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(selectedWorkspaceFile.content || '');
+                                                setCopiedToast(true);
+                                                setTimeout(() => setCopiedToast(false), 2000);
+                                            }}
+                                            className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg text-xs font-semibold transition active:scale-[0.97]"
+                                        >
+                                            📋 Copy Code
+                                        </button>
+                                        <button
+                                            onClick={() => setSelectedWorkspaceFile(null)}
+                                            className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition text-lg"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Content Body */}
+                                <div className="flex-1 overflow-hidden flex flex-col bg-slate-950">
+                                    {selectedWorkspaceFile.is_html && activeFileViewTab === 'preview' ? (
+                                        <div className="w-full h-full bg-white relative">
+                                            <iframe 
+                                                src={`/api/workspace/preview/${encodeURIComponent(selectedWorkspaceFile.path)}`}
+                                                title="Interactive Preview"
+                                                className="w-full h-full border-none"
+                                                sandbox="allow-scripts allow-same-origin allow-forms"
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="flex-1 overflow-auto p-4">
+                                            {selectedWorkspaceFile.name.endsWith('.md') ? (
+                                                <div className="markdown text-sm text-slate-200 leading-relaxed max-w-4xl mx-auto p-4 bg-slate-900/60 rounded-xl border border-slate-800 select-text" dangerouslySetInnerHTML={{ __html: marked.parse(selectedWorkspaceFile.content || '') }} />
+                                            ) : (
+                                                <pre className="text-xs text-slate-200 font-mono whitespace-pre leading-relaxed select-text p-4 bg-black/50 rounded-xl border border-slate-800/80">
+                                                    {selectedWorkspaceFile.content}
+                                                </pre>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Governance Modal */}
                     {showGovernance && (

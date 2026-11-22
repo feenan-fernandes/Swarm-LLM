@@ -118,9 +118,25 @@ def run_builder_loop(
         except Exception:
             pass
 
+    # Dynamic Semantic Skill RAG: Auto-discover top skills for task
+    matched_skills_hint = ""
+    try:
+        from backend.agents.sparse_skill_rag import get_sparse_skill_rag
+        skill_rag = get_sparse_skill_rag()
+        matched = skill_rag.match_skills(task_description, top_k=4)
+        if matched:
+            matched_skills_hint = "\n=== DYNAMICALLY MATCHED SKILL FRAMEWORKS ===\nThe following specialized frameworks match this task best:\n"
+            for m in matched:
+                matched_skills_hint += f"- {m['slug']} [{m.get('category','tool')}]: {m.get('description','')[:120]}\n"
+            matched_skills_hint += "To equip yourself or workers, use <select_skill><skill_name>{slug}</skill_name></select_skill>.\n"
+    except Exception:
+        pass
+
     conversation = f"USER REQUEST: {task_description}\n"
     if mem_snapshot:
         conversation += f"\n=== LONG-TERM MEMORY SNAPSHOTS ===\n{mem_snapshot}\n"
+    if matched_skills_hint:
+        conversation += f"{matched_skills_hint}\n"
     if skill_context_override:
         conversation += f"\nSKILL CONTEXT:\n{skill_context_override}\n"
     conversation += "\nWhat is your first action?"

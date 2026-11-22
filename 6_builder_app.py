@@ -892,6 +892,123 @@ def get_skill_detail(slug):
     return jsonify({'error': f'Skill {slug} not found'}), 404
 
 
+@app.route('/api/skills/match', methods=['POST'])
+def match_skills_endpoint():
+    """Dynamically matches user prompt to relevant skills from the 92-skill catalog."""
+    data = request.json or {}
+    query = data.get('query', '')
+    top_k = int(data.get('top_k', 4))
+    
+    try:
+        import sys
+        swarm_ide_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'swarm-ide'))
+        if swarm_ide_dir not in sys.path:
+            sys.path.insert(0, swarm_ide_dir)
+        from backend.agents.sparse_skill_rag import get_sparse_skill_rag
+        rag = get_sparse_skill_rag()
+        matches = rag.match_skills(query, top_k=top_k)
+        return jsonify({'query': query, 'matches': matches, 'total_matched': len(matches)})
+    except Exception as e:
+        return jsonify({'error': f'Failed to match skills: {e}', 'matches': []}), 500
+
+
+@app.route('/api/workspace/files', methods=['GET'])
+def list_workspace_files():
+    """Lists files in the workspace directory safely with size, modified time, and preview capability."""
+    workspace_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'workspace'))
+    if not os.path.exists(workspace_dir):
+        return jsonify({'files': [], 'total': 0})
+    
+    file_list = []
+    ignored_dirs = {'.git', '__pycache__', '.pytest_cache', 'node_modules', '.idea', '.vscode'}
+    
+    for root, dirs, files in os.walk(workspace_dir):
+        # Prune ignored directories in-place
+        dirs[:] = [d for d in dirs if d not in ignored_dirs and not d.startswith('.')]
+        for fname in files:
+            if fname.startswith('.') and fname not in {'.env.example'}:
+                continue
+            full_path = os.path.join(root, fname)
+            rel_path = os.path.relpath(full_path, workspace_dir).replace('\\', '/')
+            try:
+                stat = os.stat(full_path)
+                ext = os.path.splitext(fname)[1].lower()
+                is_html = ext in {'.html', '.htm'}
+                is_previewable = is_html or ext in {'.svg', '.md', '.txt', '.py', '.json', '.js', '.css'}
+                file_list.append({
+                    'name': fname,
+                    'path': rel_path,
+                    'size': stat.st_size,
+                    'modified': int(stat.st_mtime),
+                    'is_html': is_html,
+                    'is_previewable': is_previewable,
+                    'ext': ext
+                })
+            except Exception:
+                pass
+                
+    # Sort files by modified time descending (newest first)
+    file_list.sort(key=lambda x: x['modified'], reverse=True)
+    return jsonify({'files': file_list, 'total': len(file_list)})
+
+
+@app.route('/api/workspace/file', methods=['GET'])
+def get_workspace_file():
+    """Safely reads a file from the workspace directory."""
+    req_path = request.args.get('path', '').strip()
+    if not req_path:
+        return jsonify({'error': 'Missing path parameter'}), 400
+        
+    workspace_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'workspace'))
+    full_path = os.path.abspath(os.path.join(workspace_dir, req_path))
+    
+    # Strictly enforce workspace boundary
+    try:
+        if os.path.commonpath([workspace_dir, full_path]) != workspace_dir:
+            return jsonify({'error': 'Access denied: outside workspace'}), 403
+    except ValueError:
+        return jsonify({'error': 'Access denied: invalid path'}), 403
+        
+    if not os.path.exists(full_path) or not os.path.isfile(full_path):
+        return jsonify({'error': f'File {req_path} not found'}), 404
+        
+    try:
+        stat = os.stat(full_path)
+        is_html = full_path.lower().endswith(('.html', '.htm'))
+        with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
+            content = f.read(100_000) # Cap at 100k chars for fast UI rendering
+            
+        return jsonify({
+            'path': req_path.replace('\\', '/'),
+            'name': os.path.basename(full_path),
+            'content': content,
+            'size': stat.st_size,
+            'is_html': is_html,
+            'modified': int(stat.st_mtime)
+        })
+    except Exception as e:
+        return jsonify({'error': f'Error reading file: {e}'}), 500
+
+
+@app.route('/api/workspace/preview/<path:subpath>', methods=['GET'])
+def preview_workspace_file(subpath):
+    """Serves a file (especially HTML) directly for iframe rendering with correct mime type."""
+    workspace_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'workspace'))
+    full_path = os.path.abspath(os.path.join(workspace_dir, subpath))
+    
+    try:
+        if os.path.commonpath([workspace_dir, full_path]) != workspace_dir:
+            return "Access Denied: Path outside workspace", 403
+    except ValueError:
+        return "Access Denied: Invalid path", 403
+        
+    if not os.path.exists(full_path) or not os.path.isfile(full_path):
+        return f"File not found: {subpath}", 404
+        
+    from flask import send_file
+    return send_file(full_path)
+
+
 if __name__ == '__main__':
     from waitress import serve
     print('Production WSGI Server active on http://127.0.0.1:5000')
