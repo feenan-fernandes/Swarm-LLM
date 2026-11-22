@@ -88,6 +88,7 @@ def run_builder_loop(
     conversation += "\nWhat is your first action?"
 
     tests_passed = False
+    code_modified = False
     final_summary = ""
     consecutive_invalid = 0
     total_tokens = 0
@@ -104,7 +105,20 @@ def run_builder_loop(
                 from backend.agents.compactor import compact_trajectory, apply_compaction
                 mem_block = compact_trajectory(conversation, model=model)
                 conversation = apply_compaction(conversation, mem_block, keep_last_n_turns=2)
-                _emit({"type": "action", "iteration": iteration, "action": "memory_compaction", "result": "Context window limits approached.\nTrajectory successfully compressed into <working_memory> block."})
+                
+                # Durable planning-with-files context re-injection:
+                workspace_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'workspace'))
+                for pfile in ["task_plan.md", "progress.md", os.path.join(".swarm", "task_plan.md"), os.path.join(".swarm", "progress.md")]:
+                    full_pfile = os.path.join(workspace_dir, pfile)
+                    if os.path.exists(full_pfile):
+                        try:
+                            with open(full_pfile, "r", encoding="utf-8", errors="ignore") as pf:
+                                pcontent = pf.read(2000)
+                            conversation += f"\n\n[PERSISTENT DISK MEMORY: {pfile}]\n{pcontent}\n"
+                        except Exception:
+                            pass
+
+                _emit({"type": "action", "iteration": iteration, "action": "memory_compaction", "result": "Context window limits approached.\nTrajectory compressed into <working_memory> block with disk plan re-injection."})
             except Exception as e:
                 _emit({"type": "system", "msg": f"Auto-Compaction failed: {e}"})
 
@@ -279,6 +293,8 @@ def run_builder_loop(
                         pset = patch_lib.fromstring(diff_str.encode('utf-8'))
                         success = pset.apply(root=os.path.dirname(full_path))
                         if success:
+                            code_modified = True
+                            tests_passed = False
                             observation = f"Patch applied successfully to {path}"
                             err = validate_file(full_path)
                             if err: observation += "\n" + err
@@ -313,6 +329,8 @@ def run_builder_loop(
                             content = content.replace(search, replace, 1)
                             with open(full_path, "w", encoding="utf-8") as f:
                                 f.write(content)
+                            code_modified = True
+                            tests_passed = False
                             observation = f"Successfully replaced block in {path}."
                             err = validate_file(full_path)
                             if err: observation += "\n" + err
@@ -364,6 +382,8 @@ def run_builder_loop(
                     os.makedirs(os.path.dirname(full_path), exist_ok=True)
                     with open(full_path, "w", encoding="utf-8") as f:
                         f.write(content)
+                    code_modified = True
+                    tests_passed = False
                     observation = f"File written: {path}"
                     err = validate_file(full_path)
                     if err: observation += "\n" + err
@@ -379,6 +399,8 @@ def run_builder_loop(
                 full_path = os.path.join(skills_dir, os.path.basename(name))
                 with open(full_path, "w", encoding="utf-8") as f:
                     f.write(code)
+                code_modified = True
+                tests_passed = False
                 observation = f"Skill created and persisted permanently at workspace/skills/{os.path.basename(name)}"
 
             elif action_type == "use_skill":
@@ -494,6 +516,8 @@ def run_builder_loop(
             elif action_type == "execute_bash":
                 cmd = args.get("command", "")
                 res = execute_command_safely(cmd, task_id=task_id, iteration=iteration)
+                if any(t in cmd.lower() for t in ["pytest", "unittest", "npm test", "py_compile"]) and res["code"] == 0:
+                    tests_passed = True
                 observation = f"STDOUT:\n{_truncate_output(res['stdout'])}\nSTDERR:\n{_truncate_output(res['stderr'])}\nExit: {res['code']}"
 
             # 8. RUN TEST (Phase 5 InspectCoder augmentation)
@@ -507,7 +531,8 @@ def run_builder_loop(
                     
                 res = execute_command_safely(cmd, task_id=task_id, iteration=iteration)
                 passed = res["code"] == 0
-                tests_passed = tests_passed or passed
+                if passed:
+                    tests_passed = True
                 observation = (
                     f"Test {'PASSED' if passed else 'FAILED'}.\n"
                     f"Expected: {expect}\n"
@@ -595,9 +620,21 @@ def run_builder_loop(
             elif action_type == "finish":
                 status = args.get("status", "success")
                 summary = args.get("summary", "")
-                final_summary = summary
-                is_finished = True
-                observation = f"Finished [{status}]: {summary}"
+                
+                # Deterministic Verification Gatekeeper (The Iron Law of Verification)
+                if status == "success" and code_modified and not tests_passed:
+                    observation = (
+                        "VERIFICATION GATE REJECTION (The Iron Law of Verification):\n"
+                        "You cannot claim <finish status=\"success\"> without fresh verification evidence!\n"
+                        "You modified code in this session, but have not verified it with a passing test run (0 failures).\n"
+                        "Action required: Execute your test suite using <run_test> or <execute_bash> to prove zero regressions before completing."
+                    )
+                    action_type = "verification_gate_rejection"
+                    is_finished = False
+                else:
+                    final_summary = summary
+                    is_finished = True
+                    observation = f"Finished [{status}]: {summary}"
 
         except SandboxViolationError as e:
             observation = str(e)

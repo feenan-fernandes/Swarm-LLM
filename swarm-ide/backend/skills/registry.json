@@ -682,5 +682,68 @@
     "score": 98.2,
     "category": "interface",
     "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\landing-page-design\\SKILL.md"
+  },
+  "verification-before-completion": {
+    "name": "verification-before-completion",
+    "full_name": "obra/superpowers@verification-before-completion",
+    "url": "https://agenticskills.io/skills/verification-before-completion",
+    "stars": 4800,
+    "score": 99.5,
+    "category": "code-quality",
+    "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\verification-before-completion\\SKILL.md"
+  },
+  "planning-with-files": {
+    "name": "planning-with-files",
+    "full_name": "OthmanAdi/planning-with-files",
+    "url": "https://agenticskills.io/skills/planning-with-files",
+    "stars": 3900,
+    "score": 98.8,
+    "category": "agent-architecture",
+    "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\planning-with-files\\SKILL.md"
+  },
+  "writing-plans": {
+    "name": "writing-plans",
+    "full_name": "obra/superpowers@writing-plans",
+    "url": "https://agenticskills.io/skills/writing-plans",
+    "stars": 4500,
+    "score": 98.5,
+    "category": "productivity",
+    "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\writing-plans\\SKILL.md"
+  },
+  "executing-plans": {
+    "name": "executing-plans",
+    "full_name": "obra/superpowers@executing-plans",
+    "url": "https://agenticskills.io/skills/executing-plans",
+    "stars": 4300,
+    "score": 98.2,
+    "category": "productivity",
+    "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\executing-plans\\SKILL.md"
+  },
+  "subagent-driven-development": {
+    "name": "subagent-driven-development",
+    "full_name": "obra/superpowers@subagent-driven-development",
+    "url": "https://agenticskills.io/skills/subagent-driven-development",
+    "stars": 5200,
+    "score": 99.2,
+    "category": "swarm-coordination",
+    "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\subagent-driven-development\\SKILL.md"
+  },
+  "brainstorming": {
+    "name": "brainstorming",
+    "full_name": "obra/superpowers@brainstorming",
+    "url": "https://agenticskills.io/skills/brainstorming",
+    "stars": 6100,
+    "score": 99.8,
+    "category": "productivity",
+    "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\brainstorming\\SKILL.md"
+  },
+  "receiving-code-review": {
+    "name": "receiving-code-review",
+    "full_name": "obra/superpowers@receiving-code-review",
+    "url": "https://agenticskills.io/skills/receiving-code-review",
+    "stars": 3700,
+    "score": 97.5,
+    "category": "code-quality",
+    "installed_path": "C:\\Users\\feena\\OneDrive\\Documents\\Agentic\\stackoverflow\\swarm-ide\\backend\\skills\\receiving-code-review\\SKILL.md"
   }
 }

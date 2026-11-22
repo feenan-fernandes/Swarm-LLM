@@ -340,21 +340,40 @@
                     )}
 
                     {/* Swarm Action Observation Cards */}
-                    {actions.map((act, idx) => (
-                        <details key={`act-${idx}`} className="group border border-slate-700/60 bg-slate-900/60 rounded-xl overflow-hidden shadow-sm">
-                            <summary className="px-3.5 py-2.5 text-xs font-semibold text-slate-300 hover:text-white flex items-center justify-between cursor-pointer select-none bg-slate-850/80 transition">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-emerald-400">⚡</span>
-                                    <span className="text-slate-400 font-normal">Swarm Action Observation:</span>
-                                    <span className="font-mono text-white px-2 py-0.5 rounded bg-slate-700 text-[11px] font-bold">{act.action}</span>
+                    {actions.map((act, idx) => {
+                        if (act.action === 'verification_gate_rejection') {
+                            return (
+                                <div key={`act-${idx}`} className="border-2 border-rose-500/70 bg-rose-950/30 rounded-xl p-4 flex flex-col gap-2.5 shadow-lg backdrop-blur-sm">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2 text-rose-300 text-xs font-bold uppercase tracking-wider">
+                                            <span className="text-base">🛡️</span> Deterministic Verification Gate Rejection
+                                        </div>
+                                        <span className="text-[10px] font-mono px-2 py-0.5 rounded uppercase font-semibold bg-rose-500/20 text-rose-200 border border-rose-500/40">
+                                            Iron Law Active
+                                        </span>
+                                    </div>
+                                    <div className="text-xs text-rose-100 whitespace-pre-wrap leading-relaxed font-mono bg-black/50 p-3 rounded-lg border border-rose-500/30">
+                                        {act.result}
+                                    </div>
                                 </div>
-                                <span className="text-[10px] text-slate-500 group-open:rotate-180 transition-transform">▼</span>
-                            </summary>
-                            <div className="p-3 bg-black/40 border-t border-slate-700/50 text-xs font-mono text-slate-300 whitespace-pre-wrap max-h-60 overflow-y-auto leading-relaxed">
-                                {act.result}
-                            </div>
-                        </details>
-                    ))}
+                            );
+                        }
+                        return (
+                            <details key={`act-${idx}`} className="group border border-slate-700/60 bg-slate-900/60 rounded-xl overflow-hidden shadow-sm">
+                                <summary className="px-3.5 py-2.5 text-xs font-semibold text-slate-300 hover:text-white flex items-center justify-between cursor-pointer select-none bg-slate-850/80 transition">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-emerald-400">⚡</span>
+                                        <span className="text-slate-400 font-normal">Swarm Action Observation:</span>
+                                        <span className="font-mono text-white px-2 py-0.5 rounded bg-slate-700 text-[11px] font-bold">{act.action}</span>
+                                    </div>
+                                    <span className="text-[10px] text-slate-500 group-open:rotate-180 transition-transform">▼</span>
+                                </summary>
+                                <div className="p-3 bg-black/40 border-t border-slate-700/50 text-xs font-mono text-slate-300 whitespace-pre-wrap max-h-60 overflow-y-auto leading-relaxed">
+                                    {act.result}
+                                </div>
+                            </details>
+                        );
+                    })}
 
                     {/* Mission Completion Banner */}
                     {finishes.map((fn, idx) => (
@@ -686,20 +705,27 @@
 
             // Category Counts
             const categoryCounts = {
-                all: skillsList.length || 85,
+                all: skillsList.length || 92,
+                'code-quality': skillsList.filter(s => s.category === 'code-quality').length || 2,
+                productivity: skillsList.filter(s => s.category === 'productivity').length || 3,
+                'agent-architecture': skillsList.filter(s => s.category === 'agent-architecture').length || 1,
+                'swarm-coordination': skillsList.filter(s => s.category === 'swarm-coordination').length || 5,
                 interface: skillsList.filter(s => s.category === 'interface').length || 7,
-                'swarm-coordination': skillsList.filter(s => s.category === 'swarm-coordination').length || 4,
                 research: skillsList.filter(s => s.category === 'research').length || 1,
-                python_tool: skillsList.filter(s => s.category === 'python_tool').length || 1,
+                python_tool: skillsList.filter(s => s.category === 'python_tool' || s.category === 'tool').length || 3,
                 'design-theme': skillsList.filter(s => s.category === 'design-theme').length || 70
-            };
-                python_tool: skillsList.filter(s => s.category === 'python_tool').length,
-                'design-theme': skillsList.filter(s => s.category === 'design-theme').length
             };
 
             // Filtered Skills
             const filteredSkills = skillsList.filter(s => {
-                const matchesCat = skillCategory === 'all' || s.category === skillCategory;
+                let matchesCat = skillCategory === 'all';
+                if (!matchesCat) {
+                    if (skillCategory === 'python_tool') {
+                        matchesCat = s.category === 'python_tool' || s.category === 'tool';
+                    } else {
+                        matchesCat = s.category === skillCategory;
+                    }
+                }
                 const matchesQuery = !skillSearch || 
                     s.name.toLowerCase().includes(skillSearch.toLowerCase()) || 
                     s.description.toLowerCase().includes(skillSearch.toLowerCase()) ||
@@ -874,7 +900,7 @@
                                         <div className="w-9 h-9 rounded-xl bg-purple-600/20 border border-purple-500/40 flex items-center justify-center text-purple-300 font-bold text-base">⚡</div>
                                         <div>
                                             <h3 id="skills-title" className="text-sm font-bold text-white">Agent Skills Arsenal</h3>
-                                            <p className="text-xs text-slate-400">85 portable design engineering, testing, security, and research frameworks</p>
+                                            <p className="text-xs text-slate-400">92 portable design engineering, testing, verification, planning, and agent architecture frameworks</p>
                                         </div>
                                     </div>
                                     <button 
@@ -890,11 +916,14 @@
                                 <div className="p-3.5 border-b border-slate-800 flex flex-col md:flex-row gap-3 items-center justify-between bg-slate-900">
                                     <div className="flex items-center gap-1.5 flex-wrap">
                                         {[
-                                            { id: 'all', label: `All (${categoryCounts.all || 85})` },
+                                            { id: 'all', label: `All (${categoryCounts.all || 92})` },
+                                            { id: 'code-quality', label: `🛡️ Quality Gate (${categoryCounts['code-quality'] || 2})` },
+                                            { id: 'productivity', label: `📋 Planning (${categoryCounts.productivity || 3})` },
+                                            { id: 'agent-architecture', label: `🧠 Architecture (${categoryCounts['agent-architecture'] || 1})` },
+                                            { id: 'swarm-coordination', label: `🤖 Swarm QA (${categoryCounts['swarm-coordination'] || 5})` },
                                             { id: 'interface', label: `🎨 Interface (${categoryCounts.interface || 7})` },
-                                            { id: 'swarm-coordination', label: `🤖 Swarm QA (${categoryCounts['swarm-coordination'] || 4})` },
                                             { id: 'research', label: `🔍 Research (${categoryCounts.research || 1})` },
-                                            { id: 'python_tool', label: `⚙️ Tools (${categoryCounts.python_tool || 1})` },
+                                            { id: 'python_tool', label: `⚙️ Tools (${categoryCounts.python_tool || 3})` },
                                             { id: 'design-theme', label: `📐 Themes (${categoryCounts['design-theme'] || 70})` }
                                         ].map(tab => (
                                             <button
@@ -911,7 +940,7 @@
                                             type="text"
                                             value={skillSearch}
                                             onChange={(e) => setSkillSearch(e.target.value)}
-                                            placeholder="Search 84 skills..."
+                                            placeholder="Search 92 skills..."
                                             aria-label="Search skills"
                                             className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-3 pr-8 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
                                         />
@@ -947,12 +976,17 @@
                                                                 {sk.name}
                                                             </span>
                                                             <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-semibold border ${
+                                                                sk.category === 'code-quality' ? 'bg-rose-500/10 border-rose-500/30 text-rose-300' :
+                                                                sk.category === 'productivity' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' :
+                                                                sk.category === 'agent-architecture' ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300' :
                                                                 sk.category === 'interface' ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300' :
                                                                 sk.category === 'swarm-coordination' ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' :
-                                                                sk.category === 'research' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' :
-                                                                sk.category === 'python_tool' ? 'bg-rose-500/10 border-rose-500/30 text-rose-300' :
+                                                                sk.category === 'research' ? 'bg-teal-500/10 border-teal-500/30 text-teal-300' :
+                                                                (sk.category === 'python_tool' || sk.category === 'tool') ? 'bg-sky-500/10 border-sky-500/30 text-sky-300' :
                                                                 'bg-purple-500/10 border-purple-500/30 text-purple-300'
                                                             }`}>
+                                                                {sk.category}
+                                                            </span>
                                                                 {sk.category}
                                                             </span>
                                                         </div>
@@ -1047,9 +1081,27 @@
                                     <div className="text-4xl mb-3">⚛️</div>
                                     <h2 className="text-lg font-bold text-white mb-2">Autonomous Multi-Agent Swarm</h2>
                                     <p className="text-xs text-slate-400 leading-relaxed mb-6">
-                                        Empowered with 85 specialized design engineering, testing, security, and research frameworks. Spawn parallel sub-agents to research, architect, and code with production-grade craft.
+                                        Empowered with 92 specialized frameworks spanning TDD verification gates, durable file-based planning, agent architectures, and design engineering. Spawn parallel sub-agents to research, architect, and code with ironclad guarantees.
                                     </p>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full text-left">
+                                        <button 
+                                            onClick={() => setInput('Brainstorm architecture and plan using brainstorming and planning-with-files: clarify requirements Socratic-style and write durable task_plan.md and progress.md')}
+                                            className="p-3.5 bg-slate-900 border border-slate-800 hover:border-indigo-500/60 rounded-xl text-xs text-slate-300 transition active:scale-[0.97]"
+                                        >
+                                            <div className="font-bold text-white mb-1 flex items-center gap-1.5">
+                                                <span className="text-indigo-400">🧠</span> Socratic File-Based Planning
+                                            </div>
+                                            <div className="text-[11px] text-slate-400">Explore 2-3 approaches, persist task_plan.md & findings.md</div>
+                                        </button>
+                                        <button 
+                                            onClick={() => setInput('Implement feature using test-driven-development and verification-before-completion: create a failing test first, verify failure, write minimal code, and prove green tests')}
+                                            className="p-3.5 bg-slate-900 border border-slate-800 hover:border-rose-500/60 rounded-xl text-xs text-slate-300 transition active:scale-[0.97]"
+                                        >
+                                            <div className="font-bold text-white mb-1 flex items-center gap-1.5">
+                                                <span className="text-rose-400">🛡️</span> TDD & Iron Law Verification
+                                            </div>
+                                            <div className="text-[11px] text-slate-400">Red-Green cycle with deterministic gatekeeper proof</div>
+                                        </button>
                                         <button 
                                             onClick={() => setInput('Architect a high-converting SaaS landing page using landing-page-design and frontend-design with strict token scales, conversion copywriting, and anti-cliche aesthetics')}
                                             className="p-3.5 bg-slate-900 border border-slate-800 hover:border-purple-500/60 rounded-xl text-xs text-slate-300 transition active:scale-[0.97]"
@@ -1060,15 +1112,6 @@
                                             <div className="text-[11px] text-slate-400">One-offer spine, conversion copy & design token scales</div>
                                         </button>
                                         <button 
-                                            onClick={() => setInput('Design a responsive bento dashboard with concentric border radii and active press physics using make-interfaces-feel-better and bento')}
-                                            className="p-3.5 bg-slate-900 border border-slate-800 hover:border-sky-500/60 rounded-xl text-xs text-slate-300 transition active:scale-[0.97]"
-                                        >
-                                            <div className="font-bold text-white mb-1 flex items-center gap-1.5">
-                                                <span className="text-sky-400">🎨</span> Bento UI with Micro-Polish
-                                            </div>
-                                            <div className="text-[11px] text-slate-400">Concentric radii, spring physics & tabular numbers</div>
-                                        </button>
-                                        <button 
                                             onClick={() => setInput('Conduct real-time research on recent AI agent breakthroughs from the last 30 days using last30days')}
                                             className="p-3.5 bg-slate-900 border border-slate-800 hover:border-amber-500/60 rounded-xl text-xs text-slate-300 transition active:scale-[0.97]"
                                         >
@@ -1076,15 +1119,6 @@
                                                 <span className="text-amber-400">🔍</span> 30-Day Intelligence
                                             </div>
                                             <div className="text-[11px] text-slate-400">Multi-source scraper across Reddit, HN & GitHub</div>
-                                        </button>
-                                        <button 
-                                            onClick={() => setInput('Build a feature using test-driven-development: author a failing test, verify the failure, and write minimal code')}
-                                            className="p-3.5 bg-slate-900 border border-slate-800 hover:border-emerald-500/60 rounded-xl text-xs text-slate-300 transition active:scale-[0.97]"
-                                        >
-                                            <div className="font-bold text-white mb-1 flex items-center gap-1.5">
-                                                <span className="text-emerald-400">🧪</span> Test-Driven Engineering
-                                            </div>
-                                            <div className="text-[11px] text-slate-400">Enforce Red-Green-Refactor development cycle</div>
                                         </button>
                                     </div>
                                 </div>
